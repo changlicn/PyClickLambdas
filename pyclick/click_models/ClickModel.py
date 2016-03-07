@@ -23,9 +23,9 @@ class ClickModel(object):
         self.params = {}
         self._inference = None
 
-    def train(self, search_sessions):
+    def train(self, search_sessions, holdout_search_sessions=None):
         """Trains the click model using the given list of search sessions."""
-        self._inference.infer_params(self, search_sessions)
+        self._inference.infer_params(self, search_sessions, holdout_search_sessions)
 
     def to_json(self):
         """
