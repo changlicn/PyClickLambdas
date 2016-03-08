@@ -6,4 +6,4 @@ build
 .settings
 .DS_Store
 
-scripts/data
+scripts/data/model_query_lambdas_10reps_collection.pkl
