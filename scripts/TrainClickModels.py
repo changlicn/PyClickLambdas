@@ -16,7 +16,7 @@ from pyclick.utils.YandexRelPredChallengeParser import YandexRelPredChallengePar
 
 if __name__ == "__main__":
     search_sessions_path = './data/YandexClicks.txt'
-    click_model_output_path = './click_models'
+    click_model_output_path = './data'
 
     models_to_train = [('CM',  'CM_click_model_10_queries_1M_sessions'),
                        ('PBM', 'PBM_click_model_10_queries_1M_sessions'),
