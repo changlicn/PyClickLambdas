@@ -7,3 +7,4 @@ build
 .DS_Store
 
 scripts/data/model_query_lambdas_10reps_collection.pkl
+ClickBasedLambdasExperiments-checkpoint.ipynb
