@@ -61,7 +61,7 @@ def compute_lambdas_parallel(click_model_type, query, click_model, n_documents,
 
 if __name__ == '__main__':
     # Load the click models for the queries of interest.
-    with open('./model_query_collection.pkl') as ifile:
+    with open('./data/model_query_collection.pkl') as ifile:
         MQD = pickle.load(ifile)
 
     # For reproducibility -- re-seed the click models' RNGs.
@@ -94,5 +94,5 @@ if __name__ == '__main__':
             MQD[click_model_type][query]['stats'][n] = {'lambdas': lambdas[i],
                                                         'lcounts': lcounts[i]}
 
-    with open('./model_query_lambdas_10reps_collection.pkl', 'wb') as ofile:
+    with open('./data/model_query_lambdas_10reps_collection.pkl', 'wb') as ofile:
         pickle.dump(MQD, ofile, protocol=-1)
