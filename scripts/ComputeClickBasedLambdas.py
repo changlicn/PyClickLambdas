@@ -123,12 +123,12 @@ def compute_nonuniform_lambdas_parallel(click_model_type, query, click_model,
                         d_j = ranking[j]
 
                         if j < last_considered_rank:
-                            total_counts_[d_j, d_i] += 1
+                            viewed_counts_[d_j, d_i] += 1.0
 
                         if clicks[i] < clicks[j]:
                             lambdas_[d_j, d_i] += 1.0
 
-                        viewed_counts_[d_j, d_i] += 1.0
+                        total_counts_[d_j, d_i] += 1.0                        
         
     return click_model_type, query, n_impressions, lambdas, total_counts, viewed_counts
 
