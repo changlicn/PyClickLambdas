@@ -2,13 +2,15 @@
 
 import numpy as np
 
+from RankingSampler import RankingSampler
+
 import cPickle as pickle
 
 from joblib import Parallel, delayed, cpu_count
 
 
-def compute_lambdas_parallel(click_model_type, query, click_model, n_documents,
-                             n_impressions, n_repeats, seed=42):
+def compute_uniform_lambdas_parallel(click_model_type, query, click_model, n_documents,
+                                     n_impressions, n_repeats, seed=42):
 
     if not isinstance(n_impressions, (tuple, list)):
         n_impressions = (n_impressions,)
@@ -56,7 +58,76 @@ def compute_lambdas_parallel(click_model_type, query, click_model, n_documents,
             with np.errstate(invalid='ignore'):
                 np.copyto(lambdas_, np.nan_to_num(lambdas_ / (lcounts_ + lcounts_.T)))
         
-    return click_model_type, query, n_impressions, lambdas, lcounts
+    return click_model_type, query, n_impressions, lambdas, lcounts, None
+
+
+def compute_nonuniform_lambdas_parallel(click_model_type, query, click_model,
+                                        scores, n_impressions, n_repeats,
+                                        cutoff=5, seed=42):
+
+    if not isinstance(n_impressions, (tuple, list)):
+        n_impressions = (n_impressions,)
+
+    n_stage_impressions = np.diff(np.r_[0, n_impressions])
+
+    if (n_stage_impressions < 0).any():
+        raise ValueError('`n_impressions` must be in increasing order')
+
+    random_state = np.random.RandomState(seed)
+
+    n_documents = len(scores)
+
+    # lambdas[i, j] == # of times document i was clicked and j was above it
+    # and NOT clicked!
+    lambdas = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='float64')
+
+    # lcounts[i, j] == # of times document i was presented below document j
+    # and both were above the last clicked rank.
+    lcounts = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='int32')
+
+    # ccounts[i, j] == # of times document i was presented below document j
+    # and both were above the cutoff rank.
+    ccounts = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='int32')
+
+    sampler = RankingSampler(scores)
+
+    ranking = np.arange(n_documents, dtype='int32')
+    identity = np.arange(n_documents, dtype='int32')
+
+    for stage, n_imps in enumerate(n_stage_impressions):
+        for r in range(n_repeats):
+            lambdas_ = lambdas[stage][r]
+            lcounts_ = lcounts[stage][r]
+            ccounts_ = ccounts[stage][r]
+
+            # Avoid unnecessarry recomputation of the statistics
+            # by reusing it from previous stage.
+            if stage > 0:
+                lambdas_ += lambdas[stage - 1][r]
+                lcounts_ += lcounts[stage - 1][r]
+                ccounts_ += ccounts[stage - 1][r]
+
+            for n in range(n_imps):
+                # Sample a ranking using 'softmax' Plackett-Luce model.
+                sampler.softmax_ranking(out=ranking)
+                clicks = click_model.get_clicks(ranking, identity)
+
+                if clicks.any():
+                    last_considered_rank = np.where(clicks)[0][-1]
+                else:
+                    last_considered_rank = ranking.shape[0] - 1
+
+                for i in range(last_considered_rank):
+                    d_i = ranking[i]
+                    for j in range(i + 1, last_considered_rank + 1):
+                        d_j = ranking[j]
+                        lcounts_[d_j, d_i] += 1
+                        if clicks[i] < clicks[j]:
+                            lambdas_[d_j, d_i] += 1.0
+                        if j < cutoff:
+                            ccounts_[d_j, d_i] += 1.0
+        
+    return click_model_type, query, n_impressions, lambdas, lcounts, ccounts
 
 
 if __name__ == '__main__':
@@ -76,23 +147,41 @@ if __name__ == '__main__':
     n_impressions = [1000, 2100, 4500, 10000, 21000,
                      45000, 100000, 210000, 450000, 1000000]
 
-    lambdas_counts = Parallel(n_jobs=cpu_count())(
-                        delayed(compute_lambdas_parallel)(
-                            click_model_type, query,
-                            MQD[click_model_type][query]['model'],
-                            len(MQD[click_model_type][query]['relevances']),
-                            n_impressions, n_repeats)
-                        for click_model_type in ['CM', 'PBM', 'DCM', 'DBN', 'CCM', 'UBM']
-                        for query in MQD[click_model_type].keys())
+    lambdas_type = 'non-uniform'
+
+    if lambdas_type == 'uniform':
+        lambdas_counts = Parallel(n_jobs=cpu_count())(
+                            delayed(compute_uniform_lambdas_parallel)(
+                                click_model_type, query,
+                                MQD[click_model_type][query]['model'],
+                                len(MQD[click_model_type][query]['relevances']),
+                                n_impressions, n_repeats)
+                            for click_model_type in ['CM', 'PBM', 'DCM', 'DBN', 'CCM', 'UBM']
+                            for query in MQD[click_model_type].keys())
+
+    elif lambdas_type == 'non-uniform':
+        lambdas_counts = Parallel(n_jobs=cpu_count())(
+                            delayed(compute_nonuniform_lambdas_parallel)(
+                                click_model_type, query,
+                                MQD[click_model_type][query]['model'],
+                                MQD[click_model_type][query]['relevances'],
+                                n_impressions, n_repeats)
+                            for click_model_type in ['CM', 'PBM', 'DCM', 'DBN', 'CCM', 'UBM']
+                            for query in MQD[click_model_type].keys())
 
     # Copy the lambdas and counts into the dictionary.
     # Parallel preserves the order of the results.
     for stats in lambdas_counts:
-        click_model_type, query, n_imps, lambdas, lcounts = stats
+        click_model_type, query, n_imps, lambdas, lcounts, ccounts = stats
         MQD[click_model_type][query]['stats'] = {}
         for i, n in enumerate(n_imps):
             MQD[click_model_type][query]['stats'][n] = {'lambdas': lambdas[i],
-                                                        'lcounts': lcounts[i]}
+                                                        'lcounts': lcounts[i],
+                                                        'ccounts': None if ccounts is None else ccounts[i]}
 
-    with open('./data/model_query_lambdas_10reps_collection.pkl', 'wb') as ofile:
-        pickle.dump(MQD, ofile, protocol=-1)
+    if lambdas_type == 'uniform':
+        with open('./data/model_query_uniform_lambdas_10reps_collection.pkl', 'wb') as ofile:
+            pickle.dump(MQD, ofile, protocol=-1)
+    elif lambdas_type == 'non-uniform':
+        with open('./data/model_query_nonuniform_lambdas_10reps_collection.pkl', 'wb') as ofile:
+            pickle.dump(MQD, ofile, protocol=-1)
