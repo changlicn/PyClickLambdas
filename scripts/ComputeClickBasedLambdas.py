@@ -85,9 +85,9 @@ def compute_nonuniform_lambdas_parallel(click_model_type, query, click_model,
     # and both were above the last clicked rank.
     total_counts = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='int32')
 
-    # view_counts[i, j] == # of times document i was presented below document j
+    # viewed_counts[i, j] == # of times document i was presented below document j
     # and both were above the cutoff rank.
-    view_counts = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='int32')
+    viewed_counts = np.zeros((len(n_impressions), n_repeats, n_documents, n_documents), dtype='int32')
 
     sampler = RankingSampler(scores)
 
@@ -97,15 +97,15 @@ def compute_nonuniform_lambdas_parallel(click_model_type, query, click_model,
     for stage, n_imps in enumerate(n_stage_impressions):
         for r in range(n_repeats):
             lambdas_ = lambdas[stage][r]
-            lcounts_ = total_counts[stage][r]
-            ccounts_ = view_counts[stage][r]
+            total_counts_ = total_counts[stage][r]
+            viewed_counts_ = viewed_counts[stage][r]
 
             # Avoid unnecessarry recomputation of the statistics
             # by reusing it from previous stage.
             if stage > 0:
                 lambdas_ += lambdas[stage - 1][r]
-                lcounts_ += total_counts[stage - 1][r]
-                ccounts_ += view_counts[stage - 1][r]
+                total_counts_ += total_counts[stage - 1][r]
+                viewed_counts_ += viewed_counts[stage - 1][r]
 
             for n in range(n_imps):
                 # Sample a ranking using 'softmax' Plackett-Luce model.
@@ -123,14 +123,14 @@ def compute_nonuniform_lambdas_parallel(click_model_type, query, click_model,
                         d_j = ranking[j]
 
                         if j < last_considered_rank:
-                            lcounts_[d_j, d_i] += 1
+                            total_counts_[d_j, d_i] += 1
 
                         if clicks[i] < clicks[j]:
                             lambdas_[d_j, d_i] += 1.0
 
-                        ccounts_[d_j, d_i] += 1.0
+                        viewed_counts_[d_j, d_i] += 1.0
         
-    return click_model_type, query, n_impressions, lambdas, total_counts, view_counts
+    return click_model_type, query, n_impressions, lambdas, total_counts, viewed_counts
 
 
 if __name__ == '__main__':
@@ -175,12 +175,12 @@ if __name__ == '__main__':
     # Copy the lambdas and counts into the dictionary.
     # Parallel preserves the order of the results.
     for stats in lambdas_counts:
-        click_model_type, query, n_imps, lambdas, total_counts, view_counts = stats
+        click_model_type, query, n_imps, lambdas, total_counts, viewed_counts = stats
         MQD[click_model_type][query]['stats'] = {}
         for i, n in enumerate(n_imps):
             MQD[click_model_type][query]['stats'][n] = {'lambdas': lambdas[i],
                                                         'total_counts': total_counts[i],
-                                                        'view_counts': None if view_counts is None else view_counts[i]}
+                                                        'viewed_counts': None if viewed_counts is None else viewed_counts[i]}
 
     if lambdas_type == 'uniform':
         with open('./data/model_query_uniform_lambdas_10reps_collection.pkl', 'wb') as ofile:
