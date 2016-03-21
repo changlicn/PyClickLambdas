@@ -8,3 +8,4 @@ build
 
 scripts/data/model_query_lambdas_10reps_collection.pkl
 scripts/.ipynb_checkpoints/
+scripts/samplers/samplers_inner.so

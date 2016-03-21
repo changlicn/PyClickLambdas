@@ -8,10 +8,9 @@ import numpy as np
 from distutils.core import setup
 from Cython.Build import cythonize
 
-# python setup.py build_ext --inplace
-setup(ext_modules=cythonize("RankingSampler.pyx"), include_dirs=np.get_include())
+setup(ext_modules=cythonize("./samplers/samplers_inner.pyx"), include_dirs=np.get_include())
 END
 
 python ${TMPFILE} build_ext --inplace
 
-rm -rf build/ RankingSampler.c ${TMPFILE}
+rm -rf build/ samplers/samplers_inner.c ${TMPFILE}
