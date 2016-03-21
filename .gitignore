@@ -9,3 +9,5 @@ build
 scripts/data/model_query_lambdas_10reps_collection.pkl
 scripts/.ipynb_checkpoints/
 scripts/samplers/samplers_inner.so
+model_query_softmax_lambdas_v2_collection.pkl
+model_query_uniform_lambdas_v2_collection.pkl
