@@ -79,7 +79,7 @@ def compute_lambdas_parallel_v1(click_model_name, query, click_model, scores,
                     for j in range(i + 1, cutoff):
                         d_j = ranking[j]
 
-                        if j <= last_considered_rank:
+                        if j <= last_click_rank:
                             viewed_counts_[d_j, d_i] += 1.0
 
                         if clicks[i] < clicks[j]:
@@ -231,26 +231,24 @@ if __name__ == '__main__':
     n_repeats = 10
 
     # Total number of impressions for each query.
-    # n_impressions = [1000, 2100, 4500, 10000, 21000,
-    #                  45000, 100000, 210000, 450000, 1000000]
-
-    n_impressions = [10000]
+    n_impressions = [1000, 2100, 4500, 10000, 21000,
+                     45000, 100000, 210000, 450000, 1000000]
 
     # The method responsible for computation of lambdas.
-    #compute_lambdas_method = compute_lambdas_parallel_v1
-    compute_lambdas_method = compute_lambdas_parallel_v2
+    # compute_lambdas_method = compute_lambdas_parallel_v1
+    compute_lambdas_method = compute_lambdas_parallel_v1
 
     # The specific ranking sampler.
-    #ranking_sampler = UniformRankingSampler
+    # ranking_sampler = UniformRankingSampler
     ranking_sampler = SoftmaxRankingSampler
 
     # The cutoff rank - the maximum number of 'visible' documents.
-    cutoff = 5
+    cutoff = 2
 
     start = timer()
 
     compute_lambdas(MQD, n_repeats, n_impressions, compute_lambdas_method, ranking_sampler,
-                    cutoff, './data/model_query_softmax_lambdas_v2_collection.pkl')
+                    cutoff, './data/model_query_softmax_lambdas_v1_collection_cutoff2.pkl')
 
     end = timer()
 
