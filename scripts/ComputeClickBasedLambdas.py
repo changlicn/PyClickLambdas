@@ -179,6 +179,92 @@ def compute_lambdas_parallel_v2(click_model_name, query, click_model, scores,
             lambdas, total_counts, viewed_counts, total_lambdas, viewed_lambdas)
 
 
+def compute_lambdas_parallel_v3(click_model_name, query, click_model, scores,
+                                n_impressions, n_repeats, sampler_type,
+                                cutoff=10, seed=31):
+
+    if not isinstance(n_impressions, (tuple, list)):
+        n_impressions = (n_impressions,)
+
+    n_stage_impressions = np.diff(np.r_[0, n_impressions])
+
+    if (n_stage_impressions < 0).any():
+        raise ValueError('`n_impressions` must be in increasing order')
+
+    sampler = sampler_type(scores, random_state=np.random.RandomState(seed))
+
+    n_documents = len(scores)
+
+    # lambdas[i, j] - number of times document i was clicked and j was above it
+    # and NOT clicked (was skipped)!
+    lambdas = np.zeros((len(n_impressions), n_repeats,
+                        n_documents, n_documents), dtype='float64')
+
+    total_lambdas = np.zeros((len(n_impressions), n_repeats,
+                             n_documents, n_documents), dtype='float64')
+
+    # total_counts[i, j] == number of times document i was presented below
+    # document j and both were above the cutoff rank.
+    total_counts = np.zeros((len(n_impressions), n_repeats,
+                            n_documents, n_documents), dtype='int32')
+
+    viewed_lambdas = np.zeros((len(n_impressions), n_repeats,
+                              n_documents, n_documents), dtype='float64')
+
+    # viewed_counts[i, j] == number of times document i was presented below
+    # document j and both were above the last clicked rank.
+    viewed_counts = np.zeros((len(n_impressions), n_repeats,
+                             n_documents, n_documents), dtype='int32')
+
+    ranking = np.arange(n_documents, dtype='int32')
+    identity = np.arange(n_documents, dtype='int32')
+
+    for stage, n_imps in enumerate(n_stage_impressions):
+        for r in range(n_repeats):
+            lambdas_ = lambdas[stage][r]
+            total_counts_ = total_counts[stage][r]
+            viewed_counts_ = viewed_counts[stage][r]
+
+            # Avoid unnecessarry recomputation of the statistics
+            # by reusing it from previous stage.
+            if stage > 0:
+                lambdas_ += lambdas[stage - 1][r]
+                total_counts_ += total_counts[stage - 1][r]
+                viewed_counts_ += viewed_counts[stage - 1][r]
+
+            for n in range(n_imps):
+                sampler.sample(out=ranking)
+                clicks = click_model.get_clicks(ranking[:cutoff], identity)
+
+                if clicks.any():
+                    last_considered_rank = np.where(clicks)[0][-1]
+                else:
+                    last_considered_rank = 0
+
+                for i in range(cutoff - 1):
+                    d_i = ranking[i]
+                    for j in range(i + 1, cutoff):
+                        d_j = ranking[j]
+
+                        if j <= last_considered_rank:
+                            viewed_counts_[d_j, d_i] += 1.0
+
+                            if clicks[i] > clicks[j]:
+                                lambdas_[d_i, d_j] += 1.0
+
+                        if clicks[i] < clicks[j]:
+                            lambdas_[d_j, d_i] += 1.0
+
+                        total_counts_[d_j, d_i] += 1.0
+
+            with np.errstate(invalid='ignore'):
+                np.copyto(viewed_lambdas[stage][r], np.nan_to_num(lambdas_ / (viewed_counts_ + viewed_counts_.T)))
+                np.copyto(total_lambdas[stage][r], np.nan_to_num(lambdas_ / (total_counts_ + total_counts_.T)))
+
+    return (click_model_name, query, cutoff, n_impressions, sampler_type.__name__,
+            lambdas, total_counts, viewed_counts, total_lambdas, viewed_lambdas)
+
+
 def compute_lambdas(MQD, n_repeats, n_impressions, compute_lambdas_method,
                     ranking_sampler, cutoff, output_filepath):
     # Run the computation of lambdas in paralell with the specified
@@ -236,19 +322,20 @@ if __name__ == '__main__':
 
     # The method responsible for computation of lambdas.
     # compute_lambdas_method = compute_lambdas_parallel_v1
-    compute_lambdas_method = compute_lambdas_parallel_v1
+    # compute_lambdas_method = compute_lambdas_parallel_v2
+    compute_lambdas_method = compute_lambdas_parallel_v3
 
     # The specific ranking sampler.
-    # ranking_sampler = UniformRankingSampler
-    ranking_sampler = SoftmaxRankingSampler
+    ranking_sampler = UniformRankingSampler
+    # ranking_sampler = SoftmaxRankingSampler
 
     # The cutoff rank - the maximum number of 'visible' documents.
-    cutoff = 2
+    cutoff = 5
 
     start = timer()
 
     compute_lambdas(MQD, n_repeats, n_impressions, compute_lambdas_method, ranking_sampler,
-                    cutoff, './data/model_query_softmax_lambdas_v1_collection_cutoff2.pkl')
+                    cutoff, './data/model_query_uniform_lambdas_v3_collection.pkl')
 
     end = timer()
 
