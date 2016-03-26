@@ -36,7 +36,7 @@ class RankingBanditExperiment(object):
             self.lambdas_model.update(ranking[:self.cutoff], clicks)
 
 
-def prepare_experiment_example(MQD):
+def prepare_experiment_example(MQD,ranking_algorithm=''):
     '''
     Method that prepares an experiment.
 

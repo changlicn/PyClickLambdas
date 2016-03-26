@@ -53,7 +53,7 @@ class UniformRankingAlgorithm(BaseRankingBanditAlgorithm):
         self.ranking = np.empty(n_documents, dtype='int32')
 
     def get_ranking(self, lambdas, counts, cutoff=10):
-        return self.sampler.sample(out=self.ranking)
+        self.sampler.sample(out=self.ranking)
         return self.ranking
 
 
@@ -69,5 +69,37 @@ class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
         self.ranking = np.empty(len(relevances), dtype='int32')
 
     def get_ranking(self, lambdas, counts, cutoff=10):
-        return self.sampler.sample(out=self.ranking)
+        self.sampler.sample(out=self.ranking)
         return self.ranking
+
+
+class CopelandRakingAlgorithm(BaseRankingBanditAlgorithm):
+    '''
+    Produces rankings based on the relevance scores of the query passed
+    through a soft-max (multinomial logistic) function.
+    '''
+    def __init__(self, alpha=0.51, random_state=None):
+        super(UniformRankingAlgorithm, self).__init__(random_state=random_state)
+        self.alpha = alpha
+
+    def get_ranking(self, lambdas, counts, n_viewed, t, cutoff=10):
+        K = lambdas.shape[0]
+        out_ranking = np.empty(K, dtype='int32')
+
+        L = np.array(lambdas)
+        L[range(K),range(K)] = 0.
+        N = np.array(counts)
+        N[range(K),range(K)] = 1.
+        P = L/np.maximum(N,1) - L.T/np.maximum(N.T,1)
+
+        V = np.array(n_viewed)
+        V[range(K),range(K)] = 1.
+        non_diag = 0. * V + 1.
+        V[range(K),range(K)] = 0.
+
+        UCB = P + 2*np.sqrt(alpha * np.log(t) * non_diag / V)
+        LCB = P - 2*np.sqrt(alpha * np.log(t) * non_diag / V)
+
+        
+
+        return out_ranking

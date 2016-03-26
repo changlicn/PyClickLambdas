@@ -9,6 +9,7 @@ class BaseClickLambdasAlgorithm(object):
     def __init__(self, n_documents):
         self.lambdas = np.zeros((n_documents, n_documents), dtype='float64')
         self.counts = np.zeros((n_documents, n_documents), dtype='float64')
+        self.n_viewed = np.zeros((n_documents, n_documents), dtype='float64')
 
     def update(self, ranking, clicks):
         '''
@@ -57,7 +58,15 @@ class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
                 if clicks[i] < clicks[j]:
                     self.lambdas[d_j, d_i] += 1.0
 
+                if j <= last_click_rank:
+                    self.n_viewed[d_i, d_j] += 1.
+                    self.n_viewed[d_j, d_i] += 1.
+
+                    if clicks[i] == clicks[j]:
+                        self.lambdas[d_i, d_j] += .5
+                        self.lambdas[d_j, d_i] += .5
+
                 self.counts[d_j, d_i] += 1.0
 
     def get_parameters(self):
-        return self.lambdas, self.counts
+        return self.lambdas, self.counts, self.n_viewed
