@@ -1,4 +1,7 @@
+# -*- coding: utf-8 -*-
+
 import numpy as np
+
 
 class BaseClickLambdasAlgorithm(object):
     '''
@@ -9,7 +12,6 @@ class BaseClickLambdasAlgorithm(object):
     def __init__(self, n_documents):
         self.lambdas = np.zeros((n_documents, n_documents), dtype='float64')
         self.counts = np.zeros((n_documents, n_documents), dtype='float64')
-        self.n_viewed = np.zeros((n_documents, n_documents), dtype='float64')
 
     def update(self, ranking, clicks):
         '''
@@ -25,9 +27,11 @@ class BaseClickLambdasAlgorithm(object):
         '''
         pass
 
-    def get_parameters(self):
+    def statistics(self):
         '''
-        Returns lambdas and counts.
+        Returns click-based lambdas and impression counts. It is expected that
+        extension classes are going to return more statistics then just these
+        two.
 
         Returns
         -------
@@ -41,6 +45,11 @@ class BaseClickLambdasAlgorithm(object):
 
 
 class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents):
+        super(SkipClickLambdasAlgorithm, self).__init__(n_documents)
+        self.n_viewed = np.zeros((n_documents, n_documents), dtype='float64')
+
     def update(self, ranking, clicks):
         if clicks.any():
             last_click_rank = np.where(clicks)[0][-1]
@@ -59,14 +68,14 @@ class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
                     self.lambdas[d_j, d_i] += 1.0
 
                 if j <= last_click_rank:
-                    self.n_viewed[d_i, d_j] += 1.
-                    self.n_viewed[d_j, d_i] += 1.
+                    self.n_viewed[d_i, d_j] += 1.0
+                    self.n_viewed[d_j, d_i] += 1.0
 
                     if clicks[i] == clicks[j]:
-                        self.lambdas[d_i, d_j] += .5
-                        self.lambdas[d_j, d_i] += .5
+                        self.lambdas[d_i, d_j] += 0.5
+                        self.lambdas[d_j, d_i] += 0.5
 
                 self.counts[d_j, d_i] += 1.0
 
-    def get_parameters(self):
+    def statistics(self):
         return self.lambdas, self.counts, self.n_viewed
