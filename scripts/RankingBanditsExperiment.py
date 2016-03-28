@@ -8,6 +8,7 @@ and feedback models.
 
 import numpy as np
 
+import os
 import argparse
 import cPickle as pickle
 
@@ -17,23 +18,35 @@ from joblib import Parallel, delayed
 
 
 class RankingBanditExperiment(object):
-    def __init__(self, ranking_model, click_model, n_documents,
-                 n_impressions, cutoff):
+    def __init__(self, click_model_name, query, ranking_model, click_model,
+                 n_documents, n_impressions, cutoff, outputdir):
+        self.click_model_name = click_model_name
+        self.query = query
         self.ranking_model = ranking_model
         self.click_model = click_model
         self.n_documents = n_documents
         self.n_impressions = n_impressions
         self.cutoff = cutoff
+        self.outputdir = outputdir
+
+    def get_output_filename(self):
+        return '_'.join(map(str, [self.ranking_model.__class__.__name__,
+                                  self.click_model_name, self.query,
+                                  self.cutoff, self.n_impressions]))
 
     def execute(self):
         # Used internally by the click model.
         identity = np.arange(self.n_documents, dtype='int32')
 
-        # Output array for ranking produces by the model.
-        ranking = np.arange(self.n_documents, dtype='int32')
+        # History of all rankings produced by the model.
+        rankings = np.empty((self.n_impressions, self.n_documents),
+                           dtype='int32')
 
         # Run for the specified number of iterations.
         for t in xrange(self.n_impressions):
+            # Current ranking vector.
+            ranking = rankings[t]
+
             # Get a ranking based on the current state of the model...
             self.ranking_model.get_ranking(ranking=ranking)
 
@@ -43,6 +56,16 @@ class RankingBanditExperiment(object):
 
             # ... and allow the model to learn from them.
             self.ranking_model.set_feedback(ranking, clicks)
+
+        history = {}
+        history['query'] = self.query
+        history['click_model'] = self.click_model_name
+        history['cutoff'] = self.cutoff
+        history['ranking_model'] = self.ranking_model.__class__.__name__
+        history['rankings'] = rankings
+
+        with open(os.path.join(self.outputdir, self.get_output_filename()), 'wb') as ofile:
+            pickle.dump(history, ofile, protocol=-1)
 
 
 def prepare_click_models(source='./data/model_query_collection.pkl'):
@@ -79,7 +102,7 @@ def parse_command_line_arguments():
 
 def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
                         click_model_names, queries, n_impressions,
-                        cutoff):
+                        cutoff, outputdir):
     '''
     Method that prepares experiments.
     '''
@@ -100,9 +123,10 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             click_model = MQD[click_model_name][query]['model']
 
-            experiments.append(RankingBanditExperiment(ranking_model, click_model,
+            experiments.append(RankingBanditExperiment(click_model_name, query,
+                                                       ranking_model, click_model,
                                                        n_documents, n_impressions,
-                                                       cutoff))
+                                                       cutoff, outputdir))
     return experiments
 
 
@@ -156,10 +180,14 @@ if __name__ == '__main__':
     outputdir = kwargs.pop('output')
     # ===============================================================
 
+    # Make sure output path exists.
+    if not os.path.exists(outputdir):
+        os.makedirs(outputdir)
+
     # Prepare experiments based on the parsed parameters...
     experiments = prepare_experiments(MQD, ranking_model_name, kwargs,
                                       click_model_names, queries, n_impressions,
-                                      cutoff)
+                                      cutoff, outputdir)
 
     # and run them, conveniently, in parallel loops.
     Parallel(n_jobs=n_jobs, verbose=verbose)(
