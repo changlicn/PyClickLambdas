@@ -61,6 +61,8 @@ class RankingBanditExperiment(object):
         history['query'] = self.query
         history['click_model'] = self.click_model_name
         history['ranking_model'] = self.ranking_model
+        history['cutoff'] = self.ranking_model.cutoff
+        history['n_impressions'] = self.n_impressions
         history['rankings'] = rankings
 
         with open(os.path.join(self.outputdir, self.get_output_filename()), 'wb') as ofile:
