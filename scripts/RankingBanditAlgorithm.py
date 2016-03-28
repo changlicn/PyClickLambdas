@@ -49,23 +49,14 @@ class BaseRankingBanditAlgorithm(object):
         '''
         pass
 
-    def get_ranking(self, ranking=None):
+    def get_ranking(self, ranking):
         '''
         Produces a ranking based on the current state of the model.
-
-        *** IMPORTANT ***
-        The returned array must be a numpy int32 array.
 
         Parameters
         ----------
         ranking : array of ints, shape = [n_documents]
-            An optional output array. If None, the method instantiates a new
-            array and returns it.
-
-        Returns
-        -------
-        ranking : array of ints, shape = [n_documents]
-            A ranking of documents.
+            The output array for the ranking.
         '''
         pass
 
@@ -90,7 +81,7 @@ class BaseLambdasRankingBanditAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
         super(BaseLambdasRankingBanditAlgorithm, self).__init__(*args, **kwargs)
         try:
-            self.feedback_model = kwargs['feedback'](self.n_documents)
+            self.feedback_model = getattr(ClickLambdasAlgorithm, kwargs['feedback'])(self.n_documents)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -115,8 +106,8 @@ class UniformRankingAlgorithm(BaseRankingBanditAlgorithm):
                                                      dtype='float64'),
                                             random_state=self.random_state)
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.sample(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.sample(ranking)
 
 
 class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
@@ -133,8 +124,8 @@ class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.sample(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.sample(ranking)
 
 
 class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
@@ -153,8 +144,8 @@ class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-a', '--alpha', type=float, default=1.5,
                             required=True, help='alpha parameter')
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.get_ranking(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.get_ranking(ranking)
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
@@ -167,8 +158,8 @@ class CascadeKLUCBAlgorithm(BaseRankingBanditAlgorithm):
         self.ranker = CascadeKL_UCB(self.n_documents,
                                     random_state=self.random_state)
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.get_ranking(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.get_ranking(ranking)
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
@@ -194,8 +185,8 @@ class CascadeLambdaMachineAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-s', '--sigma', type=float, default=1.0,
                             required=True, help='sigma parameter')
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.get_ranking(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.get_ranking(ranking)
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
@@ -221,8 +212,8 @@ class CascadeThompsonSamplerAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-b', '--beta', type=float, default=1.0,
                             required=True, help='alpha parameter')
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.get_ranking(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.get_ranking(ranking)
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
@@ -244,8 +235,8 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-g', '--gamma', type=float, default=0.01,
                             required=True, help='gamma parameter')
 
-    def get_ranking(self, ranking=None):
-        return self.ranker.get_ranking(ranking)
+    def get_ranking(self, ranking):
+        self.ranker.get_ranking(ranking)
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
@@ -267,7 +258,7 @@ class CopelandRakingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
 
-    def get_ranking(self, ranking=None):
+    def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
         lambdas, counts, n_viewed = self.feedback_model.statistics()
 
@@ -279,21 +270,6 @@ class CopelandRakingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # Number of query documents and cutoff are available field variables.
         K = self.n_documents
 
-        if ranking is None:
-            ranking = np.empty(K, dtype='int32')
-
-        L = np.array(lambdas)
-        L[range(K),range(K)] = 0.
-        N = np.array(counts)
-        N[range(K),range(K)] = 1.
-        P = L/np.maximum(N,1) - L.T/np.maximum(N.T,1)
-
-        V = np.array(n_viewed)
-        V[range(K),range(K)] = 1.
-        non_diag = 0. * V + 1.
-        V[range(K),range(K)] = 0.
-
-        UCB = P + 2*np.sqrt(self.alpha * np.log(self.t) * non_diag / V)
-        LCB = P - 2*np.sqrt(self.alpha * np.log(self.t) * non_diag / V)
-
-        return ranking
+        # Put the ranking produced by the algorithm into ranking,
+        # which is an array of ints with shape = [self.n_documents]
+        ranking[:] = np.arange(K, dtype='int32')
