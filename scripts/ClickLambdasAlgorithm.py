@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
 
+import sys
+import inspect
 import numpy as np
+
+
+def get_available_algorithms():
+    algorithms = []
+    for name, obj in inspect.getmembers(sys.modules[__name__], inspect.isclass):
+        if (not name.startswith('Base') and name.endswith('Algorithm')):
+            algorithms.append(name)
+    return algorithms
 
 
 class BaseClickLambdasAlgorithm(object):

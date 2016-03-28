@@ -164,7 +164,7 @@ cdef class CascadeUCB1(object):
         d['rand_r_state'] = self.rand_r_state
         return d
 
-    def advance(self, np.ndarray[INT_t, ndim=1] ranking=None):
+    def get_ranking(self, np.ndarray[INT_t, ndim=1] ranking=None):
         ''' 
         Produces a ranking based on the current state of the model.
 
@@ -201,7 +201,7 @@ cdef class CascadeUCB1(object):
 
         return indices
 
-    def feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
+    def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.
@@ -330,7 +330,7 @@ cdef class CascadeKL_UCB(object):
     def compute_ucb(DOUBLE_t p, DOUBLE_t e, bint newton=True):
         return CascadeKL_UCB.compute_ucb_newton(p, e) if newton else CascadeKL_UCB.compute_ucb_bisection(p, e)
     
-    def advance(self, np.ndarray[INT_t, ndim=1] ranking=None):
+    def get_ranking(self, np.ndarray[INT_t, ndim=1] ranking=None):
         ''' 
         Produces a ranking based on the current state of the model.
 
@@ -367,7 +367,7 @@ cdef class CascadeKL_UCB(object):
 
         return indices
 
-    def feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
+    def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.
@@ -397,7 +397,7 @@ cdef class CascadeLambdaMachine(object):
     cdef readonly INT_t     K
     cdef readonly INT_t     L
     cdef readonly INT_t     t
-    cdef public INT_t       T
+    cdef public INT_t       burnin
     cdef UCB_info_t*        U
     cdef DOUBLE_t*          _lambdas
     cdef DOUBLE_t*          _d_lambdas
@@ -408,10 +408,10 @@ cdef class CascadeLambdaMachine(object):
         def __get__(self):
             return __wrap_in_1d_double(self, self.L, self._lambdas)
     
-    def __cinit__(self, INT_t L, INT_t T=0, DOUBLE_t sigma=1.0, object random_state=None):
+    def __cinit__(self, INT_t L, INT_t burnin=0, DOUBLE_t sigma=1.0, object random_state=None):
         self.L = L
         self.t = 0
-        self.T = T
+        self.burnin = burnin
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
         self._lambdas = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self._d_lambdas = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
@@ -427,7 +427,7 @@ cdef class CascadeLambdaMachine(object):
         free(self._d_lambdas)
         
     def __reduce__(self):
-        return (CascadeLambdaMachine, (self.L, self.T, self.sigma), self.__getstate__())
+        return (CascadeLambdaMachine, (self.L, self.burnin, self.sigma), self.__getstate__())
 
     def __setstate__(self, d):
         self.t = d['t']
@@ -441,7 +441,7 @@ cdef class CascadeLambdaMachine(object):
         d['rand_r_state'] = self.rand_r_state
         return d
     
-    def advance(self, np.ndarray[INT_t, ndim=1] ranking=None):
+    def get_ranking(self, np.ndarray[INT_t, ndim=1] ranking=None):
         ''' 
         Produces a ranking based on the current state of the model.
 
@@ -457,7 +457,7 @@ cdef class CascadeLambdaMachine(object):
         if indices.size != self.L:
             raise ValueError('ranking array must be 1-d integer array of size %d' % self.L)
         
-        if self.t < self.T:
+        if self.t < self.burnin:
             for index in range(self.L):
                 indices[index] = index
 
@@ -476,7 +476,7 @@ cdef class CascadeLambdaMachine(object):
 
         return indices
 
-    def feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
+    def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.
@@ -595,7 +595,7 @@ cdef class CascadeThompsonSampler(object):
         d['random_state'] = self.random_state
         return d
 
-    def advance(self, np.ndarray[INT_t, ndim=1] ranking=None):
+    def get_ranking(self, np.ndarray[INT_t, ndim=1] ranking=None):
         ''' 
         Produces a ranking based on the current state of the model.
 
@@ -623,7 +623,7 @@ cdef class CascadeThompsonSampler(object):
 
         return indices
 
-    def feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
+    def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.
@@ -701,7 +701,7 @@ cdef class CascadeExp3(object):
         d['rand_r_state'] = self.rand_r_state
         return d
 
-    def advance(self, np.ndarray[INT_t, ndim=1] ranking=None):
+    def get_ranking(self, np.ndarray[INT_t, ndim=1] ranking=None):
         ''' 
         Produces a ranking based on the current state of the model.
 
@@ -743,7 +743,7 @@ cdef class CascadeExp3(object):
 
         return _ranking
 
-    def feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
+    def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
+import sys
+import inspect
 import numpy as np
+
+import ClickLambdasAlgorithm
 
 from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
@@ -12,20 +16,40 @@ from rankbs import CascadeThompsonSampler
 from rankbs import CascadeExp3
 
 
+def get_available_algorithms():
+    algorithms = []
+    for name, obj in inspect.getmembers(sys.modules[__name__], inspect.isclass):
+        if (not name.startswith('Base') and name.endswith('Algorithm')):
+            algorithms.append(name)
+    return algorithms
+
+
 class BaseRankingBanditAlgorithm(object):
     '''
     Base class for the implementation of a ranking algorithm that should adapt
     and learn from the feedback in a form of clicks.
     '''
-    def __init__(self, n_documents=None, cutoff=None, random_state=None):
-        if random_state is None:
-            random_state = np.random.RandomState()
-        
-        self.n_documents = n_documents
-        self.cutoff = cutoff
-        self.random_state = random_state
+    def __init__(self, *args, **kwargs):
+        try:
+            self.n_documents = kwargs['n_documents']
+            self.cutoff = kwargs['cutoff']
+            self.random_state = kwargs['random_state']
+            if self.random_state is None:
+                random_state = np.random.RandomState()
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-    def advance(self, ranking=None):
+    @classmethod
+    def update_parser(cls, parser):
+        '''
+        Add algorithm specific parameters to the command line parser (from
+        argparse module) using `parser.add_argument` method. The parameter
+        values will be passed to the algorithm's __init__ under the name of
+        the option added to the parser.
+        '''
+        pass
+
+    def get_ranking(self, ranking=None):
         '''
         Produces a ranking based on the current state of the model.
 
@@ -45,7 +69,7 @@ class BaseRankingBanditAlgorithm(object):
         '''
         pass
 
-    def feedback(self, ranking, clicks):
+    def set_feedback(self, ranking, clicks):
         '''
         Update model parameters based on clicks. The ranking is assumed coming
         from a preceding call to `self.advance` method.
@@ -62,20 +86,37 @@ class BaseRankingBanditAlgorithm(object):
         pass
 
 
+class BaseLambdasRankingBanditAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(BaseLambdasRankingBanditAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.feedback_model = kwargs['feedback'](self.n_documents)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(BaseLambdasRankingBanditAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback',
+                            choices=ClickLambdasAlgorithm.get_available_algorithms(),
+                            required=True, help='feedback model')
+
+    def set_feedback(self, ranking, clicks):
+        self.feedback_model.update(ranking, clicks)
+
+
 class UniformRankingAlgorithm(BaseRankingBanditAlgorithm):
     '''
     Creates rankings by uniformly shuffling documents.
     '''
-    def __init__(self, n_documents=None, cutoff=None, random_state=None):
-        super(UniformRankingAlgorithm, self).__init__(n_documents=n_documents,
-                                                      cutoff=cutoff,
-                                                      random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(UniformRankingAlgorithm, self).__init__(*args, **kwargs)
+        self.ranker = UniformRankingSampler(np.empty(self.n_documents,
+                                                     dtype='float64'),
+                                            random_state=self.random_state)
 
-        self.ranker = UniformRankingSampler(np.empty(n_documents, dtype='float64'),
-                                             random_state=self.random_state)
-
-    def advance(self, ranking=None):
-        return self.ranker.sample(out=ranking)
+    def get_ranking(self, ranking=None):
+        return self.ranker.sample(ranking)
 
 
 class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
@@ -84,128 +125,155 @@ class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
     over the documents. The distribution is just a softmax function applied
     on the relevance scores.
     '''
-    def __init__(self, relevances=None, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(SoftmaxRakingAlgorithm, self).__init__(n_documents=n_documents,
-                                                     cutoff=cutoff,
-                                                     random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(SoftmaxRakingAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.ranker = SoftmaxRankingSampler(kwargs['relevances'],
+                                                random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.ranker = SoftmaxRankingSampler(relevances,
-                                             random_state=self.random_state)
-
-    def advance(self, ranking=None):
+    def get_ranking(self, ranking=None):
         return self.ranker.sample(ranking)
 
 
 class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
 
-    def __init__(self, alpha=1.5, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(CascadeUCB1Algorithm, self).__init__(n_documents=n_documents,
-                                                   cutoff=cutoff,
-                                                   random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(CascadeUCB1Algorithm, self).__init__(*args, **kwargs)
+        try:
+            self.ranker = CascadeUCB1(self.n_documents, alpha=kwargs['alpha'],
+                                      random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.ranker = CascadeUCB1(n_documents, alpha=alpha,
-                                  random_state=self.random_state)
+    @classmethod
+    def update_parser(cls, parser):
+        super(CascadeUCB1Algorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=1.5,
+                            required=True, help='alpha parameter')
 
-    def advance(self, ranking=None):
-        return self.ranker.advance(ranking)
+    def get_ranking(self, ranking=None):
+        return self.ranker.get_ranking(ranking)
 
-    def feedback(self, ranking, clicks):
-        self.ranker.feedback(ranking, clicks)
+    def set_feedback(self, ranking, clicks):
+        self.ranker.set_feedback(ranking, clicks)
 
 
 class CascadeKLUCBAlgorithm(BaseRankingBanditAlgorithm):
 
-    def __init__(self, n_documents=None, cutoff=None, random_state=None):
-        super(CascadeKLUCBAlgorithm, self).__init__(n_documents=n_documents,
-                                                   cutoff=cutoff,
-                                                   random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(CascadeKLUCBAlgorithm, self).__init__(*args, **kwargs)
+        self.ranker = CascadeKL_UCB(self.n_documents,
+                                    random_state=self.random_state)
 
-        self.ranker = CascadeKL_UCB(n_documents, random_state=self.random_state)
+    def get_ranking(self, ranking=None):
+        return self.ranker.get_ranking(ranking)
 
-    def advance(self, ranking=None):
-        return self.ranker.advance(ranking)
-
-    def feedback(self, ranking, clicks):
-        self.ranker.feedback(ranking, clicks)
+    def set_feedback(self, ranking, clicks):
+        self.ranker.set_feedback(ranking, clicks)
 
 
 class CascadeLambdaMachineAlgorithm(BaseRankingBanditAlgorithm):
 
-    def __init__(self, burnin=0, sigma=1.0, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(CascadeLambdaMachineAlgorithm, self).__init__(n_documents=n_documents,
-                                                            cutoff=cutoff,
-                                                            random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(CascadeLambdaMachineAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.ranker = CascadeLambdaMachine(self.n_documents,
+                                               burnin=kwargs['burnin'],
+                                               sigma=kwargs['sigma'],
+                                               random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.ranker = CascadeLambdaMachine(n_documents, T=burnin, sigma=sigma,
-                                           random_state=self.random_state)
+    @classmethod
+    def update_parser(cls, parser):
+        super(CascadeLambdaMachineAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-b', '--burnin', type=int, default=1000,
+                            required=True, help='burn-in time')
+        parser.add_argument('-s', '--sigma', type=float, default=1.0,
+                            required=True, help='sigma parameter')
 
-    def advance(self, ranking=None):
-        return self.ranker.advance(ranking)
+    def get_ranking(self, ranking=None):
+        return self.ranker.get_ranking(ranking)
 
-    def feedback(self, ranking, clicks):
-        self.ranker.feedback(ranking, clicks)
+    def set_feedback(self, ranking, clicks):
+        self.ranker.set_feedback(ranking, clicks)
 
 
 class CascadeThompsonSamplerAlgorithm(BaseRankingBanditAlgorithm):
 
-    def __init__(self, alpha=1.0, beta=1.0, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(CascadeThompsonSamplerAlgorithm, self).__init__(n_documents=n_documents,
-                                                              cutoff=cutoff,
-                                                              random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(CascadeThompsonSamplerAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.ranker = CascadeThompsonSampler(self.n_documents,
+                                                 alpha=kwargs['alpha'],
+                                                 beta=kwargs['beta'],
+                                                 random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.ranker = CascadeThompsonSampler(n_documents, alpha=alpha, beta=beta,
-                                             random_state=self.random_state)
+    @classmethod
+    def update_parser(cls, parser):
+        super(CascadeThompsonSamplerAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=1.0,
+                            required=True, help='alpha parameter')
+        parser.add_argument('-b', '--beta', type=float, default=1.0,
+                            required=True, help='alpha parameter')
 
-    def advance(self, ranking=None):
-        return self.ranker.advance(ranking)
+    def get_ranking(self, ranking=None):
+        return self.ranker.get_ranking(ranking)
 
-    def feedback(self, ranking, clicks):
-        self.ranker.feedback(ranking, clicks)
+    def set_feedback(self, ranking, clicks):
+        self.ranker.set_feedback(ranking, clicks)
 
 
 class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
 
-    def __init__(self, gamma=0.01, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(CascadeExp3Algorithm, self).__init__(n_documents=n_documents,
-                                                   cutoff=cutoff,
-                                                   random_state=random_state)
+    def __init__(self, *args, **kwargs):
+        super(CascadeExp3Algorithm, self).__init__(*args, **kwargs)
+        try:
+            self.ranker = CascadeExp3(self.n_documents, gamma=kwargs['gamma'],
+                                      random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.ranker = CascadeExp3(n_documents, gamma=gamma,
-                                  random_state=self.random_state)
+    @classmethod
+    def update_parser(cls, parser):
+        super(CascadeExp3Algorithm, cls).update_parser(parser)
+        parser.add_argument('-g', '--gamma', type=float, default=0.01,
+                            required=True, help='gamma parameter')
 
-    def advance(self, ranking=None):
-        return self.ranker.advance(ranking)
+    def get_ranking(self, ranking=None):
+        return self.ranker.get_ranking(ranking)
 
-    def feedback(self, ranking, clicks):
-        self.ranker.feedback(ranking, clicks)
+    def set_feedback(self, ranking, clicks):
+        self.ranker.set_feedback(ranking, clicks)
 
 
-class CopelandRakingAlgorithm(BaseRankingBanditAlgorithm):
+class CopelandRakingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
-    def __init__(self, alpha=0.51, feedback_model_type=None, n_documents=None,
-                 cutoff=None, random_state=None):
-        super(CopelandRakingAlgorithm, self).__init__(n_documents=n_documents,
-                                                      cutoff=cutoff,
-                                                      random_state=random_state)
-        if feedback_model_type is None:
-            raise ValueError('missing feedback model type')
+    def __init__(self, *args, **kwargs):
+        super(CopelandRakingAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.t = 0
+            self.alpha = kwargs['alpha']
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
 
-        self.t = 0
-        self.alpha = alpha
-        self.feedback_model = feedback_model_type(n_documents)
+    @classmethod
+    def update_parser(cls, parser):
+        super(CopelandRakingAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=0.51,
+                            required=True, help='alpha parameter')
 
-    def advance(self, ranking=None):
+    def get_ranking(self, ranking=None):
         # Get the required statistics from the feedback model.
         lambdas, counts, n_viewed = self.feedback_model.statistics()
 
         # Keep track of time inside the model. It is guaranteed that the pair
-        # of methods advance and feedback is going to be called in this order
-        # in each time step.
+        # of methods get_ranking and set_feedback is going to be called
+        # in this order each time step.
         self.t += 1
 
         # Number of query documents and cutoff are available field variables.
@@ -229,6 +297,3 @@ class CopelandRakingAlgorithm(BaseRankingBanditAlgorithm):
         LCB = P - 2*np.sqrt(self.alpha * np.log(self.t) * non_diag / V)
 
         return ranking
-
-    def feedback(self, ranking, clicks):
-        self.feedback_model.update(ranking, clicks)
