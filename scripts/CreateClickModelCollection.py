@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import numpy as np
 import cPickle as pickle
 
 from itertools import groupby
 
-from rankpy.models.users import CascadeUserModel
-from rankpy.models.users import PositionBasedModel
-from rankpy.models.users import DependentClickModel
-from rankpy.models.users import ClickChainUserModel
-from rankpy.models.users import UserBrowsingModel
+from users import CascadeUserModel
+from users import PositionBasedModel
+from users import DependentClickModel
+from users import ClickChainUserModel
+from users import UserBrowsingModel
 
 
 def load_session_queries(source='./data/search_sessions.pkl'):
