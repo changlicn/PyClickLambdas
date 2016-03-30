@@ -11,6 +11,8 @@ cdef class AbstractUserModel:
     ''' 
     Defines an abstract base class for user models.
     '''
+    cpdef get_ideal_ranking(self, int cutoff=?)
+    
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil
 
@@ -40,6 +42,8 @@ cdef class CascadeUserModel(AbstractUserModel):
     cdef DOUBLE_t *stop_proba_ptr
     cdef DOUBLE_t *continue_proba_ptr
 
+    cpdef get_ideal_ranking(self, int cutoff=?)
+
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil
 
@@ -67,6 +71,8 @@ cdef class PositionBasedModel(AbstractUserModel):
     cdef DOUBLE_t *exam_proba_ptr
 
     cdef int max_n_documents
+
+    cpdef get_ideal_ranking(self, int cutoff=?)
     
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil
@@ -96,6 +102,8 @@ cdef class DependentClickModel(AbstractUserModel):
 
     cdef int max_n_documents
 
+    cpdef get_ideal_ranking(self, int cutoff=?)
+
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil
 
@@ -122,6 +130,8 @@ cdef class ClickChainUserModel(AbstractUserModel):
     cdef public DOUBLE_t   p_stop_click_rel
 
     cdef DOUBLE_t *p_attraction_ptr
+
+    cpdef get_ideal_ranking(self, int cutoff=?)
 
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil
@@ -150,6 +160,8 @@ cdef class UserBrowsingModel(AbstractUserModel):
     cdef DOUBLE_t *p_examination_ptr
 
     cdef int max_n_documents
+    
+    cpdef get_ideal_ranking(self, int cutoff=?)
 
     cpdef get_clicks(self, object ranked_documents, object labels, int cutoff=?)
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=?) nogil

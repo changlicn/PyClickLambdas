@@ -23,6 +23,13 @@ cdef class AbstractUserModel:
     ''' 
     Defines an abstract base class for user models.
     '''
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        '''
+        Returns the ideal ranking of the documents according to
+        the parameters of the model.
+        '''
+        pass
+
     cpdef get_clicks(self, object ranked_documents, object labels,
                      int cutoff=2**31-1):
         ''' 
@@ -193,6 +200,11 @@ cdef class CascadeUserModel(AbstractUserModel):
     def __reduce__(self):
         return (CascadeUserModel, (self.click_proba, self.stop_proba,
                                    self.abandon_proba, self.rand_r_state))
+
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
@@ -389,6 +401,11 @@ cdef class PositionBasedModel(AbstractUserModel):
         return (PositionBasedModel,
                 (self.click_proba, self.exam_proba, self.rand_r_state))
 
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.exam_proba[:cutoff])))]
+
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
         ''' 
@@ -506,6 +523,11 @@ cdef class DependentClickModel(AbstractUserModel):
         return (DependentClickModel,
                 (self.click_proba, self.stop_proba, self.rand_r_state))
 
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
         ''' 
@@ -621,6 +643,11 @@ cdef class ClickChainUserModel(AbstractUserModel):
                  1.0 - self.p_stop_click_norel, 1.0 - self.p_stop_click_rel,
                  self.rand_r_state))
 
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        if cutoff <= 0:
+            cutoff = self.p_attraction.shape[0]
+        return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff]
+
     cdef int get_clicks_c(self, INT32_t *ranked_documents,
                           INT32_t n_documents, INT32_t *labels,
                           INT32_t *clicks=NULL) nogil:
@@ -725,6 +752,10 @@ cdef class UserBrowsingModel(AbstractUserModel):
         return (UserBrowsingModel,
                 (self.p_attraction, self.p_examination, self.rand_r_state))
 
+    cpdef get_ideal_ranking(self, int cutoff=-1):
+        if cutoff <= 0:
+            cutoff = self.p_attraction.shape[0]
+        return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.p_examination[:cutoff, -1])))]
 
     cpdef get_clicks(self, object ranked_documents, object labels,
                      int cutoff=2**31-1):
