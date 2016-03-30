@@ -53,7 +53,7 @@ class ClickthroughRateRegretEvaluator(BaseRegretEvaluator):
             raise ValueError('cutoff must be positive integer')
 
         click_model = self.click_model_data['model']
-        ideal_ranking = self.click_model_data['ideal_ranking']
+        ideal_ranking = click_model.get_ideal_ranking(cutoff=cutoff)
 
         # Used internally by the click model.
         identity = np.arange(rankings.shape[1], dtype='int32')
