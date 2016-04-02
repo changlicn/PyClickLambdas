@@ -99,17 +99,22 @@ def evaluate_ranking_algorithm(inputfile, outputfile, MQD, click_model_names=Non
         click_model_names = [ranker_history['click_model']]
 
     output_data = {}
-    output_data['training_click_model'] = ranker_history['click_model']
-    output_data['training_cutoff'] = ranker_history['cutoff']
-    output_data['test_click_model'] = {}
+    output_data['learning'] = {}
+    output_data['learning']['click_model'] = ranker_history['click_model']
+    output_data['learning']['cutoff'] = ranker_history['cutoff']
+    output_data['learning']['query'] = ranker_history['query']
+    output_data['learning']['n_impressions'] = ranker_history['n_impressions']
+    output_data['learning']['ranking_model'] = ranker_history['ranking_model'].getName()
+    output_data['evaluation'] = {}
 
     for click_model_name in click_model_names:
         click_model_regret = {}
+
         evaluator = ClickthroughRateRegretEvaluator(MQD[click_model_name][ranker_history['query']])
         click_model_regret['regret'] = evaluator.evaluate(ranker_history, cutoff=cutoff)
         click_model_regret['cutoff'] = cutoff
 
-        output_data['test_click_model'][click_model_name] = click_model_regret        
+        output_data['evaluation'][click_model_name] = click_model_regret
 
     with open(outputfile, 'wb') as ofile:
         pickle.dump(output_data, ofile, protocol=-1)
