@@ -5,10 +5,11 @@ import cPickle as pickle
 
 from itertools import groupby
 
-from users import CascadeUserModel
-from users import PositionBasedModel
+from users import CascadeModel
 from users import DependentClickModel
+from users import DynamicBayesianNetworkModel
 from users import ClickChainUserModel
+from users import PositionBasedModel
 from users import UserBrowsingModel
 
 
@@ -77,8 +78,8 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
         if click_model_params[0][0] != 'attr':
             raise ValueError('given parameters are not for CM model')
 
-        click_model = CascadeUserModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
-                                       [1.0] * len(docids), abandon_proba=0.0, seed=seed)
+        click_model = CascadeModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
+                                   seed=seed)
 
         relevance_scores = click_model.click_proba
     
@@ -116,10 +117,10 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
             click_model_params[2][0] != 'cont'):
             raise ValueError('given parameters are not for DBN model')
 
-        click_model = CascadeUserModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
-                                       [click_model_params[1][1].get(qid, docid).value() for docid in docids],
-                                       abandon_proba=(1 - click_model_params[2][1].get().value()),
-                                       seed=seed)
+        click_model = DynamicBayesianNetworkModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
+                                                  [click_model_params[1][1].get(qid, docid).value() for docid in docids],
+                                                  abandon_proba=(1 - click_model_params[2][1].get().value()),
+                                                  seed=seed)
 
         relevance_scores = click_model.click_proba
 
