@@ -30,7 +30,7 @@ cdef class AbstractUserModel:
         '''
         return cls.__name__
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         '''
         Returns the ideal ranking of the documents according to
         the parameters of the model.
@@ -232,10 +232,14 @@ cdef class DependentClickModel(AbstractUserModel):
         '''
         return 'DCM'
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         if cutoff <= 0:
             cutoff = self.click_proba.shape[0]
-        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        if satisfied:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        else:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff]
+
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
@@ -371,10 +375,13 @@ cdef class DynamicBayesianNetworkModel(AbstractUserModel):
         '''
         return 'DBN'
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         if cutoff <= 0:
             cutoff = self.click_proba.shape[0]
-        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        if satisfied:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        else:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff]
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
@@ -578,7 +585,7 @@ cdef class PositionBasedModel(AbstractUserModel):
         '''
         return 'PBM'
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         if cutoff <= 0:
             cutoff = self.click_proba.shape[0]
         return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.exam_proba[:cutoff])))]
@@ -706,7 +713,7 @@ cdef class ClickChainUserModel(AbstractUserModel):
         '''
         return 'CCM'
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         if cutoff <= 0:
             cutoff = self.p_attraction.shape[0]
         return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff]
@@ -816,7 +823,14 @@ cdef class UserBrowsingModel(AbstractUserModel):
         return (UserBrowsingModel,
                 (self.p_attraction, self.p_examination, self.rand_r_state))
 
-    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=False):
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'UBM'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
         if cutoff <= 0:
             cutoff = self.p_attraction.shape[0]
         return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.p_examination[:cutoff, -1])))]
