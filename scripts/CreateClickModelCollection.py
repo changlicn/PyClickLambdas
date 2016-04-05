@@ -1,4 +1,9 @@
+#!/usr/bin/python2
 # -*- coding: utf-8 -*-
+
+'''
+Creates click model objects from parameters learnt by PyClick framework.
+'''
 
 import numpy as np
 import cPickle as pickle
