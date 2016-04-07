@@ -15,7 +15,22 @@ from timeit import default_timer as timer
 def compute_lambdas_parallel_v1(click_model_name, query, click_model, scores,
                                 n_impressions, n_repeats, sampler_type,
                                 cutoff=10, seed=31):
+    '''
+    Compute click-based lambdas in the following fashion.
 
+    For each impression in which documents d_i was presented below document d_j
+    and d_i was clicked and d_j not 1 is added to lambda_ij and subtract from
+    lambda_ji. The number of times the pair of documents was presented this
+    way is kept as total counts. In addition viewed counts is the portion of
+    impressions in which the two documents (in the same order) were above
+    the last clicked document.
+
+    Based on these lambdas and counts, 2 version of final lambdas are defined:
+        1) viewed_lambda_ij = lambda_ij / (viewed_count_ij + viewed_count_ji)
+        2) total_lambda_ij = lambda_ij / (total_count_ij + total_count_ji)
+
+    In both cases the lambda values end up being in the range [-1, 1].
+    '''
     if not isinstance(n_impressions, (tuple, list)):
         n_impressions = (n_impressions,)
 
@@ -99,7 +114,21 @@ def compute_lambdas_parallel_v1(click_model_name, query, click_model, scores,
 def compute_lambdas_parallel_v2(click_model_name, query, click_model, scores,
                                 n_impressions, n_repeats, sampler_type,
                                 cutoff=10, seed=31):
+    '''
+    Compute click-based lambdas in the following fashion.
 
+    For each impression in which documents d_i was presented below document d_j
+    and d_i was clicked and d_j not 1 is added to lambda_ij. The number of times
+    the pair of documents was presented this way is kept as total counts. 
+    In addition viewed counts is the portion of impressions in which the two
+    documents (in the same order) were above the last clicked document.
+
+    Based on these lambdas and counts, 2 version of final lambdas are defined:
+        1) viewed_lambda_ij = (lambda_ij / viewed_count_ij) - (lambda_ji / viewed_count_ji)
+        2) total_lambda_ij = (lambda_ij / total_count_ij) - (lambda_ji / total_count_ji)
+
+    In both cases the lambda values end up being in the range [-1, 1].
+    '''
     if not isinstance(n_impressions, (tuple, list)):
         n_impressions = (n_impressions,)
 
@@ -154,16 +183,16 @@ def compute_lambdas_parallel_v2(click_model_name, query, click_model, scores,
                 clicks = click_model.get_clicks(ranking[:cutoff], identity)
 
                 if clicks.any():
-                    last_considered_rank = np.where(clicks)[0][-1]
+                    last_click_rank = np.where(clicks)[0][-1]
                 else:
-                    last_considered_rank = 0
+                    last_click_rank = 0
 
                 for i in range(cutoff - 1):
                     d_i = ranking[i]
                     for j in range(i + 1, cutoff):
                         d_j = ranking[j]
 
-                        if j <= last_considered_rank:
+                        if j <= last_click_rank:
                             viewed_counts_[d_j, d_i] += 1.0
 
                         if clicks[i] < clicks[j]:
@@ -172,8 +201,8 @@ def compute_lambdas_parallel_v2(click_model_name, query, click_model, scores,
                         total_counts_[d_j, d_i] += 1.0
 
             with np.errstate(invalid='ignore'):
-                np.copyto(total_lambdas[stage][r], np.nan_to_num(lambdas_ / total_counts_) - np.nan_to_num(lambdas_.T / total_counts_.T))
                 np.copyto(viewed_lambdas[stage][r], np.nan_to_num(lambdas_ / viewed_counts_) - np.nan_to_num(lambdas_.T / viewed_counts_.T))
+                np.copyto(total_lambdas[stage][r], np.nan_to_num(lambdas_ / total_counts_) - np.nan_to_num(lambdas_.T / total_counts_.T))
         
     return (click_model_name, query, cutoff, n_impressions, sampler_type.__name__,
             lambdas, total_counts, viewed_counts, total_lambdas, viewed_lambdas)
@@ -182,7 +211,23 @@ def compute_lambdas_parallel_v2(click_model_name, query, click_model, scores,
 def compute_lambdas_parallel_v3(click_model_name, query, click_model, scores,
                                 n_impressions, n_repeats, sampler_type,
                                 cutoff=10, seed=31):
+    '''
+    Compute click-based lambdas in the following fashion.
 
+    For each impression in which documents d_i was presented below document d_j
+    and d_i was clicked and d_j not or d_i was presented above d_j and d_i was
+    clicked and d_j not while both these documents were above another clicked
+    document 1 is added to lambda_ij and subtract from lambda_ji. The number of
+    times the pair of documents was presented this way is kept as total counts.
+    In addition viewed counts is the portion of impressions in which the two
+    documents (in the same order) were above the last clicked document.
+
+    Based on these lambdas and counts, 2 version of final lambdas are defined:
+        1) viewed_lambda_ij = lambda_ij / (viewed_count_ij + viewed_count_ji)
+        2) total_lambda_ij = lambda_ij / (total_count_ij + total_count_ji)
+
+    In both cases the lambda values end up being in the range [-1, 1].
+    '''
     if not isinstance(n_impressions, (tuple, list)):
         n_impressions = (n_impressions,)
 
@@ -237,22 +282,24 @@ def compute_lambdas_parallel_v3(click_model_name, query, click_model, scores,
                 clicks = click_model.get_clicks(ranking[:cutoff], identity)
 
                 if clicks.any():
-                    last_considered_rank = np.where(clicks)[0][-1]
+                    last_click_rank = np.where(clicks)[0][-1]
                 else:
-                    last_considered_rank = 0
+                    last_click_rank = 0
 
                 for i in range(cutoff - 1):
                     d_i = ranking[i]
                     for j in range(i + 1, cutoff):
                         d_j = ranking[j]
 
-                        if j <= last_considered_rank:
+                        if j <= last_click_rank:
                             viewed_counts_[d_j, d_i] += 1.0
 
                             if clicks[i] > clicks[j]:
                                 lambdas_[d_i, d_j] += 1.0
+                                lambdas_[d_j, d_i] -= 1.0
 
                         if clicks[i] < clicks[j]:
+                            lambdas_[d_i, d_j] -= 1.0
                             lambdas_[d_j, d_i] += 1.0
 
                         total_counts_[d_j, d_i] += 1.0

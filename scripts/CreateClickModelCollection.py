@@ -1,14 +1,21 @@
+#!/usr/bin/python2
 # -*- coding: utf-8 -*-
 
+'''
+Creates click model objects from parameters learnt by PyClick framework.
+'''
+
+import numpy as np
 import cPickle as pickle
 
 from itertools import groupby
 
-from rankpy.models.users import CascadeUserModel
-from rankpy.models.users import PositionBasedModel
-from rankpy.models.users import DependentClickModel
-from rankpy.models.users import ClickChainUserModel
-from rankpy.models.users import UserBrowsingModel
+from users import CascadeModel
+from users import DependentClickModel
+from users import DynamicBayesianNetworkModel
+from users import ClickChainUserModel
+from users import PositionBasedModel
+from users import UserBrowsingModel
 
 
 def load_session_queries(source='./data/search_sessions.pkl'):
@@ -56,9 +63,6 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
     click_model : click model
         The click model with parameters loaded specificaly
         for the query.
-        
-    ideal_ranking : array of int, shape = [n_documents]
-        The ideal ranking of the documents.
     
     relevance_scores : array of float, shape = [n_documents]
         The relevance scores or the so-called attractivenesses
@@ -79,11 +83,10 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
         if click_model_params[0][0] != 'attr':
             raise ValueError('given parameters are not for CM model')
 
-        click_model = CascadeUserModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
-                                       [1.0] * len(docids), abandon_proba=0.0, seed=seed)
+        click_model = CascadeModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
+                                   seed=seed)
 
         relevance_scores = click_model.click_proba
-        ideal_ranking = np.argsort(relevance_scores)[::-1]
     
     if click_model_type == 'PBM':
         if (click_model_params[0][0] != 'attr' or
@@ -98,7 +101,6 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
                                          seed=seed)
         
         relevance_scores = click_model.click_proba
-        ideal_ranking = np.argsort(relevance_scores)[::-1]
     
     if click_model_type == 'DCM':
         if (click_model_params[0][0] != 'attr' or
@@ -113,7 +115,6 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
                                           seed=seed)
 
         relevance_scores = click_model.click_proba
-        ideal_ranking = np.argsort(relevance_scores)[::-1]
 
     if click_model_type == 'DBN':
         if (click_model_params[0][0] != 'attr' or 
@@ -121,13 +122,12 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
             click_model_params[2][0] != 'cont'):
             raise ValueError('given parameters are not for DBN model')
 
-        click_model = CascadeUserModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
-                                       [click_model_params[1][1].get(qid, docid).value() for docid in docids],
-                                       abandon_proba=(1 - click_model_params[2][1].get().value()),
-                                       seed=seed)
+        click_model = DynamicBayesianNetworkModel([click_model_params[0][1].get(qid, docid).value() for docid in docids],
+                                                  [click_model_params[1][1].get(qid, docid).value() for docid in docids],
+                                                  abandon_proba=(1 - click_model_params[2][1].get().value()),
+                                                  seed=seed)
 
         relevance_scores = click_model.click_proba
-        ideal_ranking = np.argsort(relevance_scores)[::-1]
 
     if click_model_type == 'CCM':
         if (click_model_params[0][0] != 'attr' or
@@ -143,7 +143,6 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
                                           seed=seed)
 
         relevance_scores = click_model.p_attraction
-        ideal_ranking = np.argsort(relevance_scores)[::-1]
 
     if click_model_type == 'UBM':
         if (click_model_params[0][0] != 'attr' or 
@@ -158,9 +157,8 @@ def get_click_model_for_session_query(session, click_model_type, seed=None):
                                         seed=seed)
 
         relevance_scores = click_model.p_attraction
-        ideal_ranking = np.argsort(click_model.p_attraction)[::-1]
 
-    return click_model, ideal_ranking, relevance_scores
+    return click_model, relevance_scores
 
 
 if __name__ == '__main__':
@@ -174,7 +172,7 @@ if __name__ == '__main__':
         for click_model_type in ['CM', 'PBM', 'DCM', 'CCM', 'DBN', 'UBM']:
             # Load click model and get ideal ranking for the documents
             # and their relevances (estimated attractiveness).
-            model, ranking, relevances = get_click_model_for_session_query(
+            model, relevances = get_click_model_for_session_query(
                                                 session, click_model_type,
                                                 seed=None)
         
@@ -192,7 +190,6 @@ if __name__ == '__main__':
         
             data['model'] = model
             data['query'] = session.query
-            data['ideal_ranking'] = ranking
             data['relevances'] = relevances
 
     with open('./data/model_query_collection.pkl', 'wb') as ofile:

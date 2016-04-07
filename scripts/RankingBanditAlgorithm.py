@@ -49,6 +49,14 @@ class BaseRankingBanditAlgorithm(object):
         '''
         pass
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm. Defaults to the class name if not
+        overriden in the extended classes.
+        '''
+        return cls.__name__
+
     def get_ranking(self, ranking):
         '''
         Produces a ranking based on the current state of the model.
@@ -106,6 +114,13 @@ class UniformRankingAlgorithm(BaseRankingBanditAlgorithm):
                                                      dtype='float64'),
                                             random_state=self.random_state)
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'UniformRanker'
+
     def get_ranking(self, ranking):
         self.ranker.sample(ranking)
 
@@ -123,6 +138,13 @@ class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
                                                 random_state=self.random_state)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'SoftmaxRanker'
 
     def get_ranking(self, ranking):
         self.ranker.sample(ranking)
@@ -144,6 +166,13 @@ class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-a', '--alpha', type=float, default=1.5,
                             required=True, help='alpha parameter')
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'CascadeUCB1'
+
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
 
@@ -157,6 +186,13 @@ class CascadeKLUCBAlgorithm(BaseRankingBanditAlgorithm):
         super(CascadeKLUCBAlgorithm, self).__init__(*args, **kwargs)
         self.ranker = CascadeKL_UCB(self.n_documents,
                                     random_state=self.random_state)
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'CascadeKL-UCB'
 
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
@@ -185,6 +221,13 @@ class CascadeLambdaMachineAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-s', '--sigma', type=float, default=1.0,
                             required=True, help='sigma parameter')
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'LambdaRanker'
+
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
 
@@ -212,6 +255,13 @@ class CascadeThompsonSamplerAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-b', '--beta', type=float, default=1.0,
                             required=True, help='alpha parameter')
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'CascadeThompsonSampler'
+
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
 
@@ -235,6 +285,13 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-g', '--gamma', type=float, default=0.01,
                             required=True, help='gamma parameter')
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'CascadeExp3'
+
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
 
@@ -257,6 +314,13 @@ class CopelandRakingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         super(CopelandRakingAlgorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'CopelandRanker'
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.

@@ -32,7 +32,8 @@ class RankingBanditExperiment(object):
     def get_output_filename(self):
         return '_'.join(map(str, [self.ranking_model.__class__.__name__,
                                   self.click_model_name, self.query,
-                                  self.cutoff, self.n_impressions]))
+                                  self.cutoff, self.n_impressions,
+                                  'rankings.pkl']))
 
     def execute(self):
         # Used internally by the click model.
@@ -81,7 +82,7 @@ def prepare_click_models(source='./data/model_query_collection.pkl'):
     return MQD
 
 
-def parse_command_line_arguments():
+def parse_command_line_arguments(MQD):
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
 
     subparsers = parser.add_subparsers(help='choose ranking algorithm', dest='ranking_model')
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     # Load click models trained for selected queries.
     MQD = prepare_click_models()
 
-    kwargs = parse_command_line_arguments()
+    kwargs = parse_command_line_arguments(MQD)
 
     # ===============================================================
     # Get the global (not algorithm specific) command line arguments,

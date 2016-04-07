@@ -19,16 +19,18 @@
 Models for simulation of user click behaviour.
 '''
 
-from .users_inner import CascadeUserModel
-from .users_inner import PositionBasedModel
+from .users_inner import CascadeModel
 from .users_inner import DependentClickModel
+from .users_inner import DynamicBayesianNetworkModel
 from .users_inner import ClickChainUserModel
+from .users_inner import PositionBasedModel
 from .users_inner import UserBrowsingModel
 
 __all__ = [
-    'CascadeUserModel',
-    'PositionBasedModel',
+    'CascadeModel',
     'DependentClickModel',
+    'DynamicBayesianNetworkModel',
     'ClickChainUserModel',
+    'PositionBasedModel',
     'UserBrowsingModel',
 ]

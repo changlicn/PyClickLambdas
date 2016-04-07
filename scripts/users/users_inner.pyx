@@ -20,12 +20,35 @@ cdef enum:
 
 
 cdef class AbstractUserModel:
-    ''' 
+    '''
     Defines an abstract base class for user models.
     '''
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model. It defaults to the class name.
+        '''
+        return cls.__name__
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        '''
+        Returns the ideal ranking of the documents according to
+        the parameters of the model.
+
+        Parameters
+        ----------
+        cutoff : int, optional (default=-1)
+            If positive, it returns the ideal ranking for the particular model.
+
+        satisfied : boolean, optional (default=False)
+            Whether the ranking should be optimal with respect to the click-
+            through rate or to satisfaction.
+        '''
+        pass
+
     cpdef get_clicks(self, object ranked_documents, object labels,
                      int cutoff=2**31-1):
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
@@ -50,14 +73,14 @@ cdef class AbstractUserModel:
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
-        ''' 
+        '''
         Guts of get_clicks! Need to be reimplemented in the extended class.
         '''
         pass
 
     cpdef get_expected_reciprocal_rank(self, object ranked_documents,
                                        object labels, int cutoff=2**31-1):
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
@@ -83,7 +106,7 @@ cdef class AbstractUserModel:
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
                                                  INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
         in the extended class.
         '''
@@ -91,7 +114,7 @@ cdef class AbstractUserModel:
 
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
                                 int cutoff=2**31-1, bint relative=False):
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
@@ -116,7 +139,7 @@ cdef class AbstractUserModel:
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents,
                                           INT32_t n_documents, INT32_t *labels,
                                           bint relative=False) nogil:
-        ''' 
+        '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
         in the extended class.
         '''
@@ -124,7 +147,7 @@ cdef class AbstractUserModel:
 
     cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
                                            object labels, int cutoff=2**31-1):
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
@@ -150,17 +173,168 @@ cdef class AbstractUserModel:
                                                      INT32_t *ranked_documents,
                                                      INT32_t n_documents,
                                                      INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
         in the extended class.
         '''
         pass
 
 
-cdef class CascadeUserModel(AbstractUserModel):
+cdef class CascadeModel(DynamicBayesianNetworkModel):
+    def __init__(self, click_proba, seed=None):
+        '''
+        Initialize the cascade model.
+        '''
+        super(CascadeModel, self).__init__(click_proba, [1.0] * len(click_proba),
+                                           abandon_proba=0.0, seed=seed)
+
+    def __reduce__(self):
+        return (CascadeModel, (self.click_proba, self.rand_r_state))
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'CM'
+
+
+cdef class DependentClickModel(AbstractUserModel):
+    def __init__(self, click_proba, stop_proba, seed=None):
+        '''
+        Initialize the dependent click model.
+        '''
+        if seed == 0:
+            raise ValueError('the seed cannot be 0 for technical reasons, '
+                             'please, choose different seed, e.g.: 42')
+
+        self.rand_r_state = np.random.randint(1, RAND_R_MAX) if seed is None else seed
+        self.click_proba = np.array(click_proba, copy=True, dtype=DOUBLE, order='C')
+        self.click_proba_ptr = <DOUBLE_t*> self.click_proba.data
+        self.stop_proba = np.array(stop_proba, copy=True, dtype=DOUBLE, order='C')
+        self.stop_proba_ptr = <DOUBLE_t*> self.stop_proba.data
+        self.max_n_documents = self.stop_proba.shape[0]
+
+        if (self.click_proba < 0.0).any() or (self.click_proba > 1.0).any():
+            raise ValueError('click_proba is not a valid probability vector')
+
+        if (self.stop_proba < 0.0).any() or (self.stop_proba > 1.0).any():
+            raise ValueError('click_proba is not a valid probability vector')
+
+    def __reduce__(self):
+        return (DependentClickModel,
+                (self.click_proba, self.stop_proba, self.rand_r_state))
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'DCM'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        if satisfied:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        else:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff]
+
+
+    cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
+                          INT32_t *labels, INT32_t *clicks=NULL) nogil:
+        '''
+        Simulate clicks on the specified ranked list of documents.
+        '''
+        cdef INT32_t i, label, count = 0
+
+        for i in range(min(self.max_n_documents, n_documents)):
+            label = labels[ranked_documents[i]]
+
+            if random(&self.rand_r_state) < self.click_proba_ptr[label]:
+                if clicks != NULL:
+                    clicks[i] = 1
+                count += 1
+                if random(&self.rand_r_state) < self.stop_proba_ptr[i]:
+                    break
+
+        # Return the number of clicks.
+        return count
+
+    cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
+                                int cutoff=2**31-1, bint relative=False):
+        return AbstractUserModel.get_clickthrough_rate(
+                                            self, ranked_documents, labels,
+                                            min(self.max_n_documents, cutoff),
+                                            relative=relative)
+
+    cdef DOUBLE_t get_clickthrough_rate_c(self,
+                                          INT32_t *ranked_documents,
+                                          INT32_t n_documents,
+                                          INT32_t *labels,
+                                          bint relative=False) nogil:
+        '''
+        Guts of self.get_clickthrough_rate! Need to be reimplemented
+        in the extended class.
+        '''
+        cdef INT32_t rank
+        # The final answer will be here.
+        cdef DOUBLE_t result
+
+        result = 1.0
+        for rank in range(n_documents):
+            result *= (1.0 - self.click_proba_ptr[labels[ranked_documents[rank]]])
+        return 1.0 - result
+
+    cpdef get_expected_reciprocal_rank(self, object ranked_documents,
+                                       object labels, int cutoff=2**31-1):
+        return AbstractUserModel.get_expected_reciprocal_rank(
+                                            self, ranked_documents, labels,
+                                            min(self.max_n_documents, cutoff))
+
+    cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
+                                                 INT32_t *ranked_documents,
+                                                 INT32_t n_documents,
+                                                 INT32_t *labels) nogil:
+        '''
+        Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
+        in the extended class.
+        '''
+        # TODO: Implement this!!!
+        return -1.0
+
+    cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
+                                           object labels, int cutoff=2**31-1):
+        return AbstractUserModel.get_last_clicked_reciprocal_rank(
+                                            self, ranked_documents, labels,
+                                            min(self.max_n_documents, cutoff))
+
+    cdef DOUBLE_t get_last_clicked_reciprocal_rank_c(self,
+                                                     INT32_t *ranked_documents,
+                                                     INT32_t n_documents,
+                                                     INT32_t *labels) nogil:
+        '''
+        Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
+        in the extended class.
+        '''
+        # TODO: Implement this!!!
+        return -1.0
+
+    property seed:
+        def __get__(self):
+            return self.rand_r_state
+
+        def __set__(self, v):
+            if v == 0:
+                raise ValueError('the seed cannot be 0 for technical reasons, '
+                                 'please, choose different seed, e.g.: 42')
+            self.rand_r_state = v
+
+
+cdef class DynamicBayesianNetworkModel(AbstractUserModel):
     def __init__(self, click_proba, stop_proba, abandon_proba=0.0, seed=None):
-        ''' 
-        Initialize the cascade user model.
+        '''
+        Initialize the dynamic Bayesian network model.
         '''
         if len(click_proba) != len(stop_proba):
             raise ValueError('the probability arrays does not have the same '
@@ -177,7 +351,7 @@ cdef class CascadeUserModel(AbstractUserModel):
         self.stop_proba = np.array(stop_proba, copy=True, dtype=DOUBLE, order='C')
         self.stop_proba_ptr = <DOUBLE_t*> self.stop_proba.data
         self.abandon_proba = abandon_proba
-        self.continue_proba = (1. - self.click_proba * self.stop_proba - 
+        self.continue_proba = (1. - self.click_proba * self.stop_proba -
                                (1 - self.click_proba) * self.abandon_proba)
         self.continue_proba_ptr =  <DOUBLE_t*> self.continue_proba.data
 
@@ -191,12 +365,27 @@ cdef class CascadeUserModel(AbstractUserModel):
             raise ValueError('abandon_proba is not a probability')
 
     def __reduce__(self):
-        return (CascadeUserModel, (self.click_proba, self.stop_proba,
-                                   self.abandon_proba, self.rand_r_state))
+        return (DynamicBayesianNetworkModel, (self.click_proba, self.stop_proba,
+                                              self.abandon_proba, self.rand_r_state))
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'DBN'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        if satisfied:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.stop_proba[:cutoff])))]
+        else:
+            return np.argsort(-self.click_proba, kind='mergesort')[:cutoff]
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t i, label, count = 0
@@ -217,12 +406,12 @@ cdef class CascadeUserModel(AbstractUserModel):
         # Return the number of clicks.
         return count
 
-    cdef DOUBLE_t get_clickthrough_rate_c(self, 
+    cdef DOUBLE_t get_clickthrough_rate_c(self,
                                           INT32_t *ranked_documents,
                                           INT32_t n_documents,
                                           INT32_t *labels,
                                           bint relative=False) nogil:
-        ''' 
+        '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
         in the extended class.
         '''
@@ -275,7 +464,7 @@ cdef class CascadeUserModel(AbstractUserModel):
 
                 # Probability of stopping and/or abandoning at the current document.
                 stop_proba, abandon_proba = (<DOUBLE_t> 1.0, <DOUBLE_t> 1.0) if (rank == n_documents - 1) else (self.stop_proba_ptr[label], self.abandon_proba)
-                
+
                 for n_clicks in range(0, rank + 1):
                     __cc(click_stop_count_proba, rank, n_clicks)[0] += __cc(click_count_proba, rank - 1, n_clicks)[0] * (1.0 - self.click_proba_ptr[label]) * abandon_proba
                     __cc(click_stop_count_proba, rank, n_clicks + 1)[0] += __cc(click_count_proba, rank - 1, n_clicks)[0] * self.click_proba_ptr[label] * stop_proba
@@ -299,12 +488,12 @@ cdef class CascadeUserModel(AbstractUserModel):
             for rank in range(n_documents - 1, -1, -1):
                 result = (1.0 - self.click_proba_ptr[labels[ranked_documents[rank]]]) * (self.abandon_proba + (1.0 - self.abandon_proba) * result)
             return 1.0 - result
-        
+
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
                                                  INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
         in the extended class.
         '''
@@ -322,7 +511,7 @@ cdef class CascadeUserModel(AbstractUserModel):
                                                      INT32_t *ranked_documents,
                                                      INT32_t n_documents,
                                                      INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
         in the extended class.
         '''
@@ -365,8 +554,8 @@ cdef class CascadeUserModel(AbstractUserModel):
 
 cdef class PositionBasedModel(AbstractUserModel):
     def __init__(self, click_proba, exam_proba, seed=None):
-        ''' 
-        Initialize the position-base click model.
+        '''
+        Initialize the position-based click model.
         '''
         if seed == 0:
             raise ValueError('the seed cannot be 0 for technical reasons, '
@@ -389,9 +578,21 @@ cdef class PositionBasedModel(AbstractUserModel):
         return (PositionBasedModel,
                 (self.click_proba, self.exam_proba, self.rand_r_state))
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'PBM'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        if cutoff <= 0:
+            cutoff = self.click_proba.shape[0]
+        return np.argsort(-self.click_proba, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.exam_proba[:cutoff])))]
+
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
                           INT32_t *labels, INT32_t *clicks=NULL) nogil:
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t i, label, count = 0
@@ -420,7 +621,7 @@ cdef class PositionBasedModel(AbstractUserModel):
                                           INT32_t n_documents,
                                           INT32_t *labels,
                                           bint relative=False) nogil:
-        ''' 
+        '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
         in the extended class.
         '''
@@ -430,7 +631,7 @@ cdef class PositionBasedModel(AbstractUserModel):
 
         result = 1.0
         for rank in range(n_documents):
-            result *= (1.0 - 
+            result *= (1.0 -
                        self.click_proba_ptr[labels[ranked_documents[rank]]] *
                        self.exam_proba_ptr[rank])
         return 1.0 - result
@@ -445,7 +646,7 @@ cdef class PositionBasedModel(AbstractUserModel):
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
                                                  INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
         in the extended class.
         '''
@@ -462,123 +663,7 @@ cdef class PositionBasedModel(AbstractUserModel):
                                                      INT32_t *ranked_documents,
                                                      INT32_t n_documents,
                                                      INT32_t *labels) nogil:
-        ''' 
-        Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
-        in the extended class.
         '''
-        # TODO: Implement this!!!
-        return -1.0
-
-    property seed:
-        def __get__(self):
-            return self.rand_r_state
-
-        def __set__(self, v):
-            if v == 0:
-                raise ValueError('the seed cannot be 0 for technical reasons, '
-                                 'please, choose different seed, e.g.: 42')
-            self.rand_r_state = v
-
-
-cdef class DependentClickModel(AbstractUserModel):
-    def __init__(self, click_proba, stop_proba, seed=None):
-        ''' 
-        Initialize the cascade user model.
-        '''
-        if seed == 0:
-            raise ValueError('the seed cannot be 0 for technical reasons, '
-                             'please, choose different seed, e.g.: 42')
-
-        self.rand_r_state = np.random.randint(1, RAND_R_MAX) if seed is None else seed
-        self.click_proba = np.array(click_proba, copy=True, dtype=DOUBLE, order='C')
-        self.click_proba_ptr = <DOUBLE_t*> self.click_proba.data
-        self.stop_proba = np.array(stop_proba, copy=True, dtype=DOUBLE, order='C')
-        self.stop_proba_ptr = <DOUBLE_t*> self.stop_proba.data
-        self.max_n_documents = self.stop_proba.shape[0]
-
-        if (self.click_proba < 0.0).any() or (self.click_proba > 1.0).any():
-            raise ValueError('click_proba is not a valid probability vector')
-
-        if (self.stop_proba < 0.0).any() or (self.stop_proba > 1.0).any():
-            raise ValueError('click_proba is not a valid probability vector')
-
-    def __reduce__(self):
-        return (DependentClickModel,
-                (self.click_proba, self.stop_proba, self.rand_r_state))
-
-    cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents,
-                          INT32_t *labels, INT32_t *clicks=NULL) nogil:
-        ''' 
-        Simulate clicks on the specified ranked list of documents.
-        '''
-        cdef INT32_t i, label, count = 0
-
-        for i in range(min(self.max_n_documents, n_documents)):
-            label = labels[ranked_documents[i]]
-
-            if random(&self.rand_r_state) < self.click_proba_ptr[label]:
-                if clicks != NULL:
-                    clicks[i] = 1
-                count += 1
-                if random(&self.rand_r_state) < self.stop_proba_ptr[i]:
-                    break
-
-        # Return the number of clicks.
-        return count
-
-    cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
-                                int cutoff=2**31-1, bint relative=False):
-        return AbstractUserModel.get_clickthrough_rate(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff),
-                                            relative=relative)
-
-    cdef DOUBLE_t get_clickthrough_rate_c(self,
-                                          INT32_t *ranked_documents,
-                                          INT32_t n_documents,
-                                          INT32_t *labels,
-                                          bint relative=False) nogil:
-        ''' 
-        Guts of self.get_clickthrough_rate! Need to be reimplemented
-        in the extended class.
-        '''
-        cdef INT32_t rank
-        # The final answer will be here.
-        cdef DOUBLE_t result
-
-        result = 1.0
-        for rank in range(n_documents):
-            result *= (1.0 - self.click_proba_ptr[labels[ranked_documents[rank]]])
-        return 1.0 - result
-
-    cpdef get_expected_reciprocal_rank(self, object ranked_documents,
-                                       object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_expected_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
-
-    cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
-                                                 INT32_t *ranked_documents,
-                                                 INT32_t n_documents,
-                                                 INT32_t *labels) nogil:
-        ''' 
-        Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
-        in the extended class.
-        '''
-        # TODO: Implement this!!!
-        return -1.0
-
-    cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
-                                           object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_last_clicked_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
-
-    cdef DOUBLE_t get_last_clicked_reciprocal_rank_c(self,
-                                                     INT32_t *ranked_documents,
-                                                     INT32_t n_documents,
-                                                     INT32_t *labels) nogil:
-        ''' 
         Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
         in the extended class.
         '''
@@ -599,8 +684,8 @@ cdef class DependentClickModel(AbstractUserModel):
 cdef class ClickChainUserModel(AbstractUserModel):
     def __init__(self, p_attraction, p_continue_noclick, p_continue_click_norel,
                  p_continue_click_rel, seed=None):
-        ''' 
-        Initialize the cascade user model.
+        '''
+        Initialize the click chain user model.
         '''
         if seed == 0:
             raise ValueError('the seed cannot be 0 for technical reasons, '
@@ -621,10 +706,22 @@ cdef class ClickChainUserModel(AbstractUserModel):
                  1.0 - self.p_stop_click_norel, 1.0 - self.p_stop_click_rel,
                  self.rand_r_state))
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'CCM'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        if cutoff <= 0:
+            cutoff = self.p_attraction.shape[0]
+        return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff]
+
     cdef int get_clicks_c(self, INT32_t *ranked_documents,
                           INT32_t n_documents, INT32_t *labels,
                           INT32_t *clicks=NULL) nogil:
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t i, label, count = 0
@@ -653,7 +750,7 @@ cdef class ClickChainUserModel(AbstractUserModel):
                                           INT32_t n_documents,
                                           INT32_t *labels,
                                           bint relative=False) nogil:
-        ''' 
+        '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
         in the extended class.
         '''
@@ -670,7 +767,7 @@ cdef class ClickChainUserModel(AbstractUserModel):
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
                                                  INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
         in the extended class.
         '''
@@ -681,7 +778,7 @@ cdef class ClickChainUserModel(AbstractUserModel):
                                                      INT32_t *ranked_documents,
                                                      INT32_t n_documents,
                                                      INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
         in the extended class.
         '''
@@ -698,10 +795,11 @@ cdef class ClickChainUserModel(AbstractUserModel):
                                  'please, choose different seed, e.g.: 42')
             self.rand_r_state = v
 
+
 cdef class UserBrowsingModel(AbstractUserModel):
     def __init__(self, p_attraction, p_examination, seed=None):
-        ''' 
-        Initialize the cascade user model.
+        '''
+        Initialize the user browsing model.
         '''
         if seed == 0:
             raise ValueError('the seed cannot be 0 for technical reasons, please,'
@@ -725,6 +823,17 @@ cdef class UserBrowsingModel(AbstractUserModel):
         return (UserBrowsingModel,
                 (self.p_attraction, self.p_examination, self.rand_r_state))
 
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the click model.
+        '''
+        return 'UBM'
+
+    cpdef get_ideal_ranking(self, int cutoff=-1, bint satisfied=True):
+        if cutoff <= 0:
+            cutoff = self.p_attraction.shape[0]
+        return np.argsort(-self.p_attraction, kind='mergesort')[:cutoff][np.argsort(np.lexsort((np.arange(cutoff), -self.p_examination[:cutoff, -1])))]
 
     cpdef get_clicks(self, object ranked_documents, object labels,
                      int cutoff=2**31-1):
@@ -732,7 +841,7 @@ cdef class UserBrowsingModel(AbstractUserModel):
 
 
     cdef int get_clicks_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, INT32_t *clicks=NULL) nogil:
-        ''' 
+        '''
         Simulate clicks on the specified ranked list of documents.
         '''
         cdef INT32_t rank, label, count = 0
@@ -763,7 +872,7 @@ cdef class UserBrowsingModel(AbstractUserModel):
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents,
                                           INT32_t n_documents, INT32_t *labels,
                                           bint relative=False) nogil:
-        ''' 
+        '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
         in the extended class.
         '''
@@ -788,7 +897,7 @@ cdef class UserBrowsingModel(AbstractUserModel):
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
                                                  INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_expected_reciprocal_rank_c! Need to be reimplemented
         in the extended class.
         '''
@@ -805,7 +914,7 @@ cdef class UserBrowsingModel(AbstractUserModel):
                                                      INT32_t *ranked_documents,
                                                      INT32_t n_documents,
                                                      INT32_t *labels) nogil:
-        ''' 
+        '''
         Guts of self.get_last_clicked_reciprocal_rank! Need to be reimplemented
         in the extended class.
         '''
@@ -822,7 +931,7 @@ cdef class UserBrowsingModel(AbstractUserModel):
                                  'please, choose different seed, e.g.: 42')
             self.rand_r_state = v
 
-        
+
 # =============================================================================
 # Utils
 # =============================================================================
@@ -837,7 +946,7 @@ cdef inline unsigned int rand_r(unsigned int *seed) nogil:
 
 
 cdef inline double random(unsigned int *random_state) nogil:
-    ''' 
+    '''
     Generate a random double in [0, 1].
     '''
     return (<double> rand_r(random_state) / <double> RAND_R_MAX)
