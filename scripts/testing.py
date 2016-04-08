@@ -26,3 +26,21 @@ for i in range(10):
 gammas = MQD['UBM']['2548']['model'].p_examination
 print gammas.T[[9]+range(9),:]
 print MQD['UBM'][q]['stats'][1000000]['cutoff']
+
+
+Docs = range(10)
+for ind,u in enumerate(Docs):
+    for v in Docs[i+1:]:
+        for x in set(Docs) - set([u,v]):
+            Lambda[u,v] += \
+                (1-gamma[0,1]*r[v]) * gamma[0,2] * r[u] * n[v,u,x]/N_tot[v,u] - \
+                (1-gamma[0,1]*r[u]) * gamma[0,2] * r[v] * n[u,v,x]/N_tot[u,v] + \
+                (1-gamma[0,1]*r[v]) * (1-gamma[0,2]*r[x]) * gamma[0,3] * r[u] * n[v,x,u]/N_tot[v,u] - \
+                (1-gamma[0,1]*r[u]) * (1-gamma[0,2]*r[x]) * gamma[0,3] * r[v] * n[u,x,v]/N_tot[u,v] + \
+                (1-gamma[0,1]*r[x]) * (1-gamma[0,2]*r[v]) * gamma[0,3] * r[u] * n[x,v,u]/N_tot[v,u] - \
+                (1-gamma[0,1]*r[x]) * (1-gamma[0,2]*r[u]) * gamma[0,3] * r[v] * n[x,u,v]/N_tot[u,v] + \
+                (1-gamma[0,1]*r[v]) * gamma[0,2] * r[x] * gamma[2,3] * r[u] * n[v,x,u]/N_tot[v,u] - \
+                (1-gamma[0,1]*r[u]) * gamma[0,2] * r[x] * gamma[2,3] * r[v] * n[u,x,v]/N_tot[u,v] + \
+                gamma[0,1] * r[x] * (1-gamma[1,2]*r[v]) * gamma[1,3] * r[u] * n[x,v,u]/N_tot[v,u] - \
+                gamma[0,1] * r[x] * (1-gamma[1,2]*r[u]) * gamma[1,3] * r[v] * n[x,u,v]/N_tot[u,v]
+
