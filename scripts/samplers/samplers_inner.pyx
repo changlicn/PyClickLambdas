@@ -161,7 +161,8 @@ cdef class MultinomialRankingSampler(object):
 
     def sample(self, np.ndarray[INT_t, ndim=1] out=None):
         '''
-        Produces a uniformly random rankings.
+        Produces a random rankings by sampling with replacement from a
+        multinomial distribution induced by document relevances.
 
         Parameters
         ----------
@@ -171,14 +172,15 @@ cdef class MultinomialRankingSampler(object):
         '''
         cdef np.ndarray[INT_t, ndim=1] ranking = \
             np.empty(self.scores.size, dtype=INT) if out is None else out
-        cdef np.ndarray[DOUBLE_t, ndim=1] S = self.scores.copy()
-
-        cdef INT_t  i, j
 
         if ranking.size != self.scores.size:
             raise ValueError('out must be 1-d array of size %d' % self.scores.size)
 
-        return self.random.choice(self.scores.size, size=self.scores.size, replace=False, p=self.scores)
+        np.copyto(ranking, self.random.choice(self.scores.size,
+                                              size=self.scores.size,
+                                              replace=False,
+                                              p=self.scores))
+        return ranking
 
 
 cdef class SoftmaxRankingSampler(object):
