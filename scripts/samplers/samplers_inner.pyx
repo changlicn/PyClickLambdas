@@ -140,6 +140,47 @@ cdef class UniformRankingSampler(object):
 
         return _ranking
 
+
+cdef class MultinomialRankingSampler(object):
+    cdef np.ndarray scores
+    cdef object     random
+
+    def __cinit__(self, np.ndarray[DOUBLE_t, ndim=1] scores, random_state=None):
+        self.scores = scores / scores.sum()
+
+        if random_state is None:
+            self.random = np.random.RandomState(np.random.randint(1, RAND_R_MAX))
+        else:
+            self.random = np.random.RandomState(random_state.randint(1, RAND_R_MAX))
+
+    def __reduce__(self):
+        '''
+        Reduce reimplementation, for pickling.
+        '''
+        return (MultinomialRankingSampler, (self.scores, self.random))
+
+    def sample(self, np.ndarray[INT_t, ndim=1] out=None):
+        '''
+        Produces a uniformly random rankings.
+
+        Parameters
+        ----------
+        out : array-like, shape = [self.L,], optional
+              Optional output array, which can speed up the computation
+              because no array is created during the call.
+        '''
+        cdef np.ndarray[INT_t, ndim=1] ranking = \
+            np.empty(self.scores.size, dtype=INT) if out is None else out
+        cdef np.ndarray[DOUBLE_t, ndim=1] S = self.scores.copy()
+
+        cdef INT_t  i, j
+
+        if ranking.size != self.scores.size:
+            raise ValueError('out must be 1-d array of size %d' % self.scores.size)
+
+        return self.random.choice(self.scores.size, size=self.scores.size, replace=False, p=self.scores)
+
+
 cdef class SoftmaxRankingSampler(object):
     cdef DOUBLE_t* S
     cdef DOUBLE_t* P
