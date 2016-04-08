@@ -20,3 +20,4 @@ scripts/data/model_query_uniform_lambdas_v1_collection_cutoff2.pkl
 scripts/data/model_query_uniform_lambdas_v2_collection_cutoff2.pkl
 
 scripts/.ipynb_checkpoints/
+scripts/data
