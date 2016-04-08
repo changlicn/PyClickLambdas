@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TMPFILE=`mktemp --tmpdir=. "$(basename $0).XXXXXXXXXX"`
+TMPFILE=`mktemp "$(pwd)/$(basename $0).XXXXXXXXXX"`
 
 cat << 'END' > ${TMPFILE}
 import numpy as np
