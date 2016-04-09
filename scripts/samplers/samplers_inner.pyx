@@ -53,7 +53,7 @@ cdef inline INT_t rand_choice(DOUBLE_t *p, INT_t sz, UINT_t *seed, DOUBLE_t p_su
     cdef DOUBLE_t c = 0.0
     cdef UINT_t   r = rand_r(seed)
     # argmin_{i}: sum_{j=0}{i}p[j] > uniform(0, 1]
-    while i < sz:
+    while i < sz - 1:
         c += p[i]
         if p_sum * r <= (<UINT_t> (c * RAND_R_MAX)):
             break
@@ -215,7 +215,7 @@ cdef class MultinomialRankingSampler(object):
         if _ranking.size != self.L:
             raise ValueError('out must be 1-d array of size %d' % self.L)
 
-        for i in range(self.L):
+        for i in range(self.L - 1):
             # Sample a random document...
             j = i + rand_choice(self.S + i, self.L - i, &self.rand_r_state, p_sum=Ssum)
             # ... put it into the ranking...
@@ -224,6 +224,8 @@ cdef class MultinomialRankingSampler(object):
             Ssum -= self.S[j]
             self.D[i], self.D[j] = self.D[j], self.D[i]
             self.S[i], self.S[j] = self.S[j], self.S[i]
+
+        ranking[self.L - 1] = self.D[self.L - 1]
 
         return _ranking
 
