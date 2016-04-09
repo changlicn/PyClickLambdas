@@ -4,6 +4,7 @@ import numpy as np
 
 from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
+from samplers import MultinomialRankingSampler
 
 import cPickle as pickle
 
@@ -418,22 +419,23 @@ if __name__ == '__main__':
     # compute_lambdas_method = compute_lambdas_parallel_v3
 
     # The specific ranking sampler.
-    ranking_sampler = UniformRankingSampler
+    # ranking_sampler = UniformRankingSampler
     # ranking_sampler = SoftmaxRankingSampler
+    ranking_sampler = MultinomialRankingSampler
 
     # The cutoff rank - the maximum number of 'visible' documents.
-    cutoff = 3
+    cutoff = 5
 
     # If True, the output will contain the impressions from which
     # the lambdas were computed.
-    store_impressions = True
+    store_impressions = False
 
     start = timer()
 
     compute_lambdas(MQD, click_models, n_repeats,
                     n_impressions, compute_lambdas_method,
                     ranking_sampler, cutoff, store_impressions,
-                    './data/test_model_query_uniform_lambdas_v1_collection.pkl')
+                    './data/model_query_multinomial_lambdas_v1_collection_c5.pkl')
 
     end = timer()
 
