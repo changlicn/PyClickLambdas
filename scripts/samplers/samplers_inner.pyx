@@ -48,14 +48,14 @@ cdef inline UINT_t rand_r(UINT_t *seed) nogil:
     return (seed[0] & <UINT_t> RAND_R_MAX)
 
 
-cdef inline INT_t rand_choice(DOUBLE_t *p, INT_t sz, UINT_t *seed) nogil:
+cdef inline INT_t rand_choice(DOUBLE_t *p, INT_t sz, UINT_t *seed, DOUBLE_t p_sum=1.0) nogil:
     cdef INT_t    i = 0
     cdef DOUBLE_t c = 0.0
     cdef UINT_t   r = rand_r(seed)
     # argmin_{i}: sum_{j=0}{i}p[j] > uniform(0, 1]
-    while i < sz:
+    while i < sz - 1:
         c += p[i]
-        if r <= (<UINT_t> (c * RAND_R_MAX)):
+        if p_sum * r <= (<UINT_t> (c * RAND_R_MAX)):
             break
         i += 1
     return i
@@ -89,13 +89,15 @@ cdef class UniformRankingSampler(object):
     cdef unsigned int rand_r_state
 
     def __cinit__(self, np.ndarray[DOUBLE_t, ndim=1] scores, random_state=None):
-        cdef int i
+        if (scores < 0.0).any():
+            raise ValueError('scores must be non-negative')
 
         self.L = scores.size
         self.S = <DOUBLE_t*> calloc(self.L, sizeof(DOUBLE_t))
         
         if self.S == NULL:
             free(self.S)
+            raise MemoryError()
 
         memcpy(self.S, scores.data, self.L * sizeof(DOUBLE_t))
 
@@ -142,22 +144,55 @@ cdef class UniformRankingSampler(object):
 
 
 cdef class MultinomialRankingSampler(object):
-    cdef np.ndarray scores
-    cdef object     random
+    cdef DOUBLE_t *S
+    cdef INT_t    *D
+    cdef INT_t     L
+
+    cdef unsigned int rand_r_state
 
     def __cinit__(self, np.ndarray[DOUBLE_t, ndim=1] scores, random_state=None):
-        self.scores = scores / scores.sum()
+        cdef int i
+        cdef DOUBLE_t scores_sum
+
+        scores_sum = scores.sum()
+
+        if scores_sum <= 0.0:
+            raise ValueError('scores do not sum to 1.0')
+
+        if (scores < 0.0).any():
+            raise ValueError('scores must be non-negative')
+
+        self.L = scores.size
+        self.S = <DOUBLE_t*> calloc(self.L, sizeof(DOUBLE_t))
+        self.D = <INT_t*> calloc(self.L, sizeof(INT_t))
+
+        if self.S == NULL or self.D == NULL:
+            free(self.S)
+            free(self.D)
+            raise MemoryError()
+
+        memcpy(self.S, scores.data, self.L * sizeof(DOUBLE_t))
+
+        # Renormalize the scores to sum to 1.0 and prepare document ranking.
+        for i in range(self.L):
+            self.S[i] /= scores_sum
+            self.D[i] = i
 
         if random_state is None:
-            self.random = np.random.RandomState(np.random.randint(1, RAND_R_MAX))
+            self.rand_r_state = np.random.randint(1, RAND_R_MAX)
         else:
-            self.random = np.random.RandomState(random_state.randint(1, RAND_R_MAX))
+            self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+
+    def __dealloc__(self):
+        free(self.S)
+        free(self.D)
 
     def __reduce__(self):
         '''
         Reduce reimplementation, for pickling.
         '''
-        return (MultinomialRankingSampler, (self.scores, self.random))
+        return (MultinomialRankingSampler,
+                (__wrap_in_1d_double(self, self.L, self.S), self.rand_r_state))
 
     def sample(self, np.ndarray[INT_t, ndim=1] out=None):
         '''
@@ -170,17 +205,29 @@ cdef class MultinomialRankingSampler(object):
               Optional output array, which can speed up the computation
               because no array is created during the call.
         '''
-        cdef np.ndarray[INT_t, ndim=1] ranking = \
-            np.empty(self.scores.size, dtype=INT) if out is None else out
+        cdef np.ndarray[INT_t, ndim=1] _ranking = \
+            np.empty(self.L, dtype=INT) if out is None else out
 
-        if ranking.size != self.scores.size:
-            raise ValueError('out must be 1-d array of size %d' % self.scores.size)
+        cdef INT_t   *ranking = <INT_t*>_ranking.data
+        cdef INT_t    i, j
+        cdef DOUBLE_t Ssum = 1.0
 
-        np.copyto(ranking, self.random.choice(self.scores.size,
-                                              size=self.scores.size,
-                                              replace=False,
-                                              p=self.scores))
-        return ranking
+        if _ranking.size != self.L:
+            raise ValueError('out must be 1-d array of size %d' % self.L)
+
+        for i in range(self.L - 1):
+            # Sample a random document...
+            j = i + rand_choice(self.S + i, self.L - i, &self.rand_r_state, p_sum=Ssum)
+            # ... put it into the ranking...
+            ranking[i] = self.D[j]
+            # ... and make the changes needed for the next iteration.
+            Ssum -= self.S[j]
+            self.D[i], self.D[j] = self.D[j], self.D[i]
+            self.S[i], self.S[j] = self.S[j], self.S[i]
+
+        ranking[self.L - 1] = self.D[self.L - 1]
+
+        return _ranking
 
 
 cdef class SoftmaxRankingSampler(object):
@@ -194,8 +241,10 @@ cdef class SoftmaxRankingSampler(object):
     cdef unsigned int rand_r_state
 
     def __cinit__(self, np.ndarray[DOUBLE_t, ndim=1] scores, gamma=0.0, random_state=None):
-        self.L = scores.size
+        if (scores < 0.0).any():
+            raise ValueError('scores must be non-negative')
 
+        self.L = scores.size
         self.S = <DOUBLE_t*> calloc(self.L, sizeof(DOUBLE_t))
         self.P = <DOUBLE_t*> calloc(self.L, sizeof(DOUBLE_t))
         self.C = <DOUBLE_t*> calloc(self.L, sizeof(DOUBLE_t))
@@ -205,7 +254,8 @@ cdef class SoftmaxRankingSampler(object):
             free(self.S)
             free(self.P)
             free(self.C)
-            free(self.D);
+            free(self.D)
+            raise MemoryError()
 
         memcpy(self.S, scores.data, self.L * sizeof(DOUBLE_t))
 
