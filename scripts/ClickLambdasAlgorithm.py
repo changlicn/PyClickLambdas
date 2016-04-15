@@ -19,9 +19,9 @@ class BaseClickLambdasAlgorithm(object):
     and updates of what we call "click-based lambdas" from the feedback
     (clicks) on an impression of a particular (fixed) query.
     '''
-    def __init__(self, n_documents):
-        self.lambdas = np.zeros((n_documents, n_documents), dtype='float64')
-        self.counts = np.zeros((n_documents, n_documents), dtype='float64')
+    def __init__(self, n_documents, cutoff):
+        self.n_documents = n_documents
+        self.cutoff = cutoff
 
     def update(self, ranking, clicks):
         '''
@@ -34,6 +34,12 @@ class BaseClickLambdasAlgorithm(object):
 
         clicks : array, shape = [n_documents]
             Click feedback produced by a simulated user on `ranking`.
+        '''
+        pass
+
+    def reset(self):
+        '''
+        Reset the lambdas and impression counts.
         '''
         pass
 
@@ -54,38 +60,28 @@ class BaseClickLambdasAlgorithm(object):
         pass
 
 
-class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+class RefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
 
-    def __init__(self, n_documents):
-        super(SkipClickLambdasAlgorithm, self).__init__(n_documents)
-        self.n_viewed = np.zeros((n_documents, n_documents), dtype='float64')
+    def __init__(self, n_documents, cutoff):
+        super(RefinedSkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents, cutoff, cutoff),
+                                dtype='float64')
+        self.counts = np.empty((n_documents, n_documents, cutoff, cutoff),
+                               dtype='float64')
+        self.reset()
 
     def update(self, ranking, clicks):
-        if clicks.any():
-            last_click_rank = np.where(clicks)[0][-1]
-        else:
-            last_click_rank = 0
-
-        n_documents = len(ranking)
-
-        for i in range(n_documents - 1):
+        for i in range(self.cutoff - 1):
             d_i = ranking[i]
-
-            for j in range(i + 1, n_documents):
+            for j in range(i + 1, self.cutoff):
                 d_j = ranking[j]
-
                 if clicks[i] < clicks[j]:
-                    self.lambdas[d_j, d_i] += 1.0
+                    self.lambdas[d_j, d_i, j, i] += 1.0
+                self.counts[d_j, d_i, j, i] += 1.0
 
-                if j <= last_click_rank:
-                    self.n_viewed[d_i, d_j] += 1.0
-                    self.n_viewed[d_j, d_i] += 1.0
-
-                    if clicks[i] == clicks[j]:
-                        self.lambdas[d_i, d_j] += 0.5
-                        self.lambdas[d_j, d_i] += 0.5
-
-                self.counts[d_j, d_i] += 1.0
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
 
     def statistics(self):
-        return self.lambdas, self.counts, self.n_viewed
+        return self.lambdas, self.counts

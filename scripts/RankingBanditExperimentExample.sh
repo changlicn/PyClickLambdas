@@ -1,48 +1,54 @@
 #!/bin/bash
 
 # ============================================================================
+# RelativeRanking algorithm
+# ============================================================================
+
+./RankingBanditExperiment.py -q all -m CM -n 100 -w 8 -c 5 RelativeRankingAlgorithm -a 0.5 -g 0.0 -f RefinedSkipClickLambdasAlgorithm experiments/RelativeRankingAlgorithm/CM@5
+
+# ============================================================================
 # CascadeUCB1 algorithm
 # ============================================================================
 
-./RankingBanditExperiment.py -q all -m CM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/CM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/CM@5 experiments/CascadeUCB1Algorithm/CM@5
+# ./RankingBanditExperiment.py -q all -m CM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/CM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/CM@5 experiments/CascadeUCB1Algorithm/CM@5
 
-./RankingBanditExperiment.py -q all -m DCM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/DCM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/DCM@5 experiments/CascadeUCB1Algorithm/DCM@5
+# ./RankingBanditExperiment.py -q all -m DCM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/DCM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/DCM@5 experiments/CascadeUCB1Algorithm/DCM@5
 
-./RankingBanditExperiment.py -q all -m DBN -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/DBN@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/DBN@5 experiments/CascadeUCB1Algorithm/DBN@5
+# ./RankingBanditExperiment.py -q all -m DBN -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/DBN@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/DBN@5 experiments/CascadeUCB1Algorithm/DBN@5
 
-./RankingBanditExperiment.py -q all -m CCM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/CCM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/CCM@5 experiments/CascadeUCB1Algorithm/CCM@5
+# ./RankingBanditExperiment.py -q all -m CCM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/CCM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/CCM@5 experiments/CascadeUCB1Algorithm/CCM@5
 
-./RankingBanditExperiment.py -q all -m PBM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/PBM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/PBM@5 experiments/CascadeUCB1Algorithm/PBM@5
+# ./RankingBanditExperiment.py -q all -m PBM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/PBM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/PBM@5 experiments/CascadeUCB1Algorithm/PBM@5
 
-./RankingBanditExperiment.py -q all -m UBM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/UBM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/UBM@5 experiments/CascadeUCB1Algorithm/UBM@5
+# ./RankingBanditExperiment.py -q all -m UBM -n 10000000 -w 8 -c 5 CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm/UBM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeUCB1Algorithm/UBM@5 experiments/CascadeUCB1Algorithm/UBM@5
 
 # ============================================================================
 # CascadeKL-UCB algorithm
 # ============================================================================
 
-./RankingBanditExperiment.py -q all -m CM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/CM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/CM@5 experiments/CascadeKLUCBAlgorithm/CM@5
+# ./RankingBanditExperiment.py -q all -m CM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/CM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/CM@5 experiments/CascadeKLUCBAlgorithm/CM@5
 
-./RankingBanditExperiment.py -q all -m DCM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/DCM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/DCM@5 experiments/CascadeKLUCBAlgorithm/DCM@5
+# ./RankingBanditExperiment.py -q all -m DCM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/DCM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/DCM@5 experiments/CascadeKLUCBAlgorithm/DCM@5
 
-./RankingBanditExperiment.py -q all -m DBN -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/DBN@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/DBN@5 experiments/CascadeKLUCBAlgorithm/DBN@5
+# ./RankingBanditExperiment.py -q all -m DBN -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/DBN@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/DBN@5 experiments/CascadeKLUCBAlgorithm/DBN@5
 
-./RankingBanditExperiment.py -q all -m CCM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/CCM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/CCM@5 experiments/CascadeKLUCBAlgorithm/CCM@5
+# ./RankingBanditExperiment.py -q all -m CCM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/CCM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/CCM@5 experiments/CascadeKLUCBAlgorithm/CCM@5
 
-./RankingBanditExperiment.py -q all -m PBM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/PBM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/PBM@5 experiments/CascadeKLUCBAlgorithm/PBM@5
+# ./RankingBanditExperiment.py -q all -m PBM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/PBM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/PBM@5 experiments/CascadeKLUCBAlgorithm/PBM@5
 
-./RankingBanditExperiment.py -q all -m UBM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/UBM@5
-./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/UBM@5 experiments/CascadeKLUCBAlgorithm/UBM@5
+# ./RankingBanditExperiment.py -q all -m UBM -n 10000000 -w 8 -c 5 CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm/UBM@5
+# ./RankingRegretEvaluation.py -m all -c 5 -w 8 experiments/CascadeKLUCBAlgorithm/UBM@5 experiments/CascadeKLUCBAlgorithm/UBM@5
 
 # Run an experiment with CascadeUCB1 on query 1153 with clicks generated from
 # UBM model for 100 iterations:

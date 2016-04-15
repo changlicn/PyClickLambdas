@@ -89,7 +89,7 @@ class BaseLambdasRankingBanditAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
         super(BaseLambdasRankingBanditAlgorithm, self).__init__(*args, **kwargs)
         try:
-            self.feedback_model = getattr(ClickLambdasAlgorithm, kwargs['feedback'])(self.n_documents)
+            self.feedback_model = getattr(ClickLambdasAlgorithm, kwargs['feedback'])(self.n_documents, self.cutoff)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -299,41 +299,58 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         self.ranker.set_feedback(ranking, clicks)
 
 
-class CopelandRakingAlgorithm(BaseLambdasRankingBanditAlgorithm):
+class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
     def __init__(self, *args, **kwargs):
-        super(CopelandRakingAlgorithm, self).__init__(*args, **kwargs)
+        super(RelativeRankingAlgorithm, self).__init__(*args, **kwargs)
         try:
             self.t = 0
             self.alpha = kwargs['alpha']
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
+        # Validate the type of the feedback model.
+        if not isinstance(self.feedback_model,
+                          ClickLambdasAlgorithm.RefinedSkipClickLambdasAlgorithm):
+            raise ValueError('expected RefinedSkipClickLambdasAlgorithm for '
+                             'feedback_model but received %s'
+                             % type(self.feedback_model))
+
     @classmethod
     def update_parser(cls, parser):
-        super(CopelandRakingAlgorithm, cls).update_parser(parser)
+        super(RelativeRankingAlgorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
+        parser.add_argument('-g', '--gamma', type=float, required = True,
+                            help='continuation probability lower bound')
 
     @classmethod
     def getName(cls):
         '''
         Returns the name of the algorithm.
         '''
-        return 'CopelandRanker'
+        return 'RelativeRankingAlgorithm'
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
-        lambdas, counts, n_viewed = self.feedback_model.statistics()
+        Lambda, N = self.feedback_model.statistics()
+
+        # Number of query documents and cutoff are available field variables.
+        L = self.n_documents
+        K = self.cutoff
 
         # Keep track of time inside the model. It is guaranteed that the pair
         # of methods get_ranking and set_feedback is going to be called
         # in this order each time step.
         self.t += 1
 
-        # Number of query documents and cutoff are available field variables.
-        K = self.n_documents
+        # Whenever you would like to restart the algorithm, call
+        # self.feedback_model.reset().        
 
         # Put the ranking produced by the algorithm into ranking,
-        # which is an array of ints with shape = [self.n_documents]
-        ranking[:] = np.arange(K, dtype='int32')
+        # which is an array of ints with shape = [self.n_documents].
+        ranking[:] = np.arange(L, dtype='int32')
+
+        # It is not needed to create rankings of size L, you can only
+        # set the top K documents, the rest of documents will not be
+        # 'seen' by the click model.
