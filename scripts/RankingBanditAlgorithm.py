@@ -336,10 +336,50 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         return 'RelativeRankingAlgorithm'
 
     def get_chain_in(P_t):
+        # Stack keeping yet unranked documents.
+        stack = []
+
+        # number of documents beating each document.
+        n_beating_d = P_t.sum(axis=0)
+
+        # Stack keeps documents in the order
+        # in which they should be ranked.
+        stack = np.where(n_beating_d == 0).tolist()
+
+        # Topological order (preference ordering) of
+        # vertices (documents) in the graph induced
+        # by P_t (preferences).
+        chain = []
+
+        while len(stack) > 0:
+            u = stack.pop()
+            for v in xrange(self.n_documents):
+                n_beating_d[v] -= P[u, v]
+                if n_beating_d[v] == 0:
+                    stack.push[v]
+            chain.push(u)
+
+        if len(chain) != self.n_documents:
+            return []
+
+        # Check there is total ordering in top K documents,
+        # (if not return empty array) ...
+        for i in xrange(self.cutoff - 1):
+            if P_t[chain[i], chain[i + 1]] != 1:
+                return []
+
+        # ... and the K-th document beats all
+        # the lower ranked documents...
+        for i in xrange(self.cutoff, self.n_documents):
+            if P_t[chain[self.cutoff - 1], chain[i]] != 1:
+                return []
+
+        # ... return the chain if all conditions
+        # above are satisfied.
         return chain
 
     def detected_loops_in(P_t):
-        return True/False
+        return len(get_chain_in(P_t)) > 0
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
