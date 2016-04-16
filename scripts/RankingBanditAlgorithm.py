@@ -343,6 +343,11 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # should be ranked.
         stack = np.where(n_beating_d == 0).tolist()
 
+        # There cannot be more than 1 unbeaten document
+        # if we are looking for a single chain.
+        if len(stack) > 1:
+            return []
+
         # Topological order (preference ordering) of
         # vertices (documents) in the graph induced
         # by P_t (preferences).
@@ -374,14 +379,14 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # ... return the chain if all conditions
         # above are satisfied.
-        return chain
+        return np.array(chain, dtype='int32')
 
     def detected_loops_in(P_t):
         return len(get_chain_in(P_t)) > 0
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
-        Lambda, N = self.feedback_model.statistics()
+        Lambdas, N = self.feedback_model.statistics()
 
         # Number of query documents and cutoff are available field variables.
         L = self.n_documents
@@ -403,36 +408,40 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # set the top K documents, the rest of documents will not be
         # 'seen' by the click model.
 
-        # If for some reason the arrays are in order klij, then put them in ijkl
-        if Lambda.shape == [K,K,L,L]:
-            Lambda = np.swapaxes(Lambda,0,2)
-            Lambda = np.swapaxes(Lambda,1,3)
+        # Sanity check that the arrays are in order klij.
+        if Lambdas.shape == (K, K, L, L):
+            raise ValueError('misordered dimension in lambdas and counts')
 
-        # Lambda_ij is the same as Lambda
-        Lambda_ij = np.array(Lambda)
-        # Lambda_ji is the "transpose" of Lambda along i and j
-        Lambda_ji = np.array(Lambda)
-        Lambda_ji = np.swapaxes(Lambda_ji,0,1)
-        # N_ij is the same as N
-        N_ij = np.array(N)
-        # N_ji is the "transpose" of N along i and j
-        N_ji = np.array(N)
-        N_ji = np.swapaxes(N_ji,0,1)
+        # Lambda_ij is the same as Lambdas
+        Lambda_ij = Lambdas
 
-        # P is the frequentist mean
-        P = Lambda_ij/N_ij - Lambda_ji/N_ji
-        # C is the size of the confidence interval
-        C = sqrt(self.alpha*np.log(t+1)/N_ij)+sqrt(self.alpha*np.log(t+1)/N_ji)
+        # Lambda_ji is the transpose of Lambda_ij. This operation
+        # is very cheap in NumPy >= 1.10 because only a view needs
+        # to be created.
+        Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
 
-        # LCB and UCB
-        L = P-C
-        # U = P+C
+        # N_ij is the same as N.
+        N_ij = N
 
-        # The partial order
-        P_t = (L > 0).any(axis=(2,3))
+        # N_ji is the transpose of N_ij. Similarly to construction
+        # of Lambda_ji this can turn out to be very cheap.
+        N_ji = np.swapaxes(N_ij, 0, 1)
 
-        if self.detected_loops_in(P_t):
-            return self.shuffler.sample(ranking)
+        # p is the frequentist mean.
+        p = Lambda_ij / N_ij - Lambda_ji / N_ji
+
+        # c is the size of the confidence interval
+        c = (sqrt(self.alpha * np.log(t + 1) / N_ij) + 
+             sqrt(self.alpha * np.log(t + 1) / N_ji))
+
+        # Get LCB.
+        L = p - c
+
+        # The partial order.
+        P_t = (L > 0).any(axis=(2, 3))
+
+        if detected_loops_in(P_t):
+            # TT: What should happen here?
 
         if self.C != []:
             topK = P_t[self.C[1:K],self.C[:K-1]]
@@ -444,9 +453,9 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         if self.C = []:
             chain = self.get_chain_in(P_t)
-            if chain != False:
-                self.C = the chain
-                ranking[:K] = self.C
+            if chain != []:
+                self.C = chain
+                ranking[:K] = self.C[:K]
                 return ranking
             else:
                 return self.shuffler.sample(ranking)
@@ -482,13 +491,3 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                         return ranking
                 else:
                     raise ValueError,"Unexpected non-conforming index"
-
-
-
-
-
-
-
-
-
-
