@@ -335,6 +335,12 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         '''
         return 'RelativeRankingAlgorithm'
 
+    def get_chain_in(P_t):
+        return chain
+
+    def detected_loops_in(P_t):
+        return True/False
+
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
         Lambda, N = self.feedback_model.statistics()
@@ -382,13 +388,25 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # LCB and UCB
         L = P-C
-        U = P+C
+        # U = P+C
 
         # The partial order
         P_t = (L > 0).any(axis=(2,3))
 
+        if detected_loops_in(P_t):
+            return self.shuffler.sample(ranking)
+
+        if self.C != []:
+            topK = P_t[self.C[1:K],self.C[:K-1]]
+            notInC = sorted(set(range(L))-set(self.C))
+            bottomK = P_t[notInC,self.C[K-1]]
+            if topK.any() or bottomK.any():
+                self.C = []
+                self.feedback_model.reset()
+
         if self.C = []:
-            if there is a chain in P_t:
+            chain = self.get_chain_in(P_t)
+            if chain != False:
                 self.C = the chain
                 ranking[:K] = self.C
                 return ranking
@@ -402,7 +420,31 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                 ranking[:K] = self.C
                 return ranking
             else:
-                N = [self.C[ind] for ind in np.nonzero(topK)[0]]+...
+                N = np.nonzero(topK)[0].tolist()+\
+                    (np.nonzero(bottomK)[0]+K).tolist()
+                k = self.random_state.choice(N)
+                if k<K:
+                    if self.random_state.rand() < 0.5:
+                        ranking[:K] = self.C
+                        return ranking
+                    else:
+                        ranking[:K] = self.C[:]
+                        ranking[k] = self.C[k+1]
+                        ranking[k+1] = self.C[k]
+                        return ranking
+                elif k>K:
+                    if self.random_state.rand() < 0.5:
+                        ranking[:K] = self.C
+                        ranking[K-2] = notInC[k-K]
+                        return ranking
+                    else:
+                        ranking[:K] = self.C[:]
+                        ranking[K-2] = self.C[K-1]
+                        ranking[K-1] = notInC[k-K]
+                        return ranking
+                else:
+                    raise ValueError,"Unexpected non-conforming index"
+
 
 
 
