@@ -336,14 +336,11 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         return 'RelativeRankingAlgorithm'
 
     def get_chain_in(P_t):
-        # Stack keeping yet unranked documents.
-        stack = []
-
-        # number of documents beating each document.
+        # The number of (other) documents beating each document.
         n_beating_d = P_t.sum(axis=0)
 
-        # Stack keeps documents in the order
-        # in which they should be ranked.
+        # Stack keeps documents in the order in which they
+        # should be ranked.
         stack = np.where(n_beating_d == 0).tolist()
 
         # Topological order (preference ordering) of
@@ -359,6 +356,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                     stack.push[v]
             chain.push(u)
 
+        # A preference cycle was detected?
         if len(chain) != self.n_documents:
             return []
 
