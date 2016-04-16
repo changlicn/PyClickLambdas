@@ -304,10 +304,14 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
         super(RelativeRankingAlgorithm, self).__init__(*args, **kwargs)
         try:
-            self.t = 0
+            self.t = 1
             self.alpha = kwargs['alpha']
+            self.C = []
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
+        self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+                                                     dtype='float64'),
+                                            random_state=self.random_state)
 
         # Validate the type of the feedback model.
         if not isinstance(self.feedback_model,
@@ -354,3 +358,47 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # It is not needed to create rankings of size L, you can only
         # set the top K documents, the rest of documents will not be
         # 'seen' by the click model.
+
+        # If for some reason the arrays are in order klij, then put them in ijkl
+        if Lambda.shape == [K,K,L,L]:
+            Lambda = np.swapaxes(Lambda,0,2)
+            Lambda = np.swapaxes(Lambda,1,3)
+
+        # Lambda_ij is the same as Lambda
+        Lambda_ij = np.array(Lambda)
+        # Lambda_ji is the "transpose" of Lambda along i and j
+        Lambda_ji = np.array(Lambda)
+        Lambda_ji = np.swapaxes(Lambda_ji,0,1)
+        # N_ij is the same as N
+        N_ij = np.array(N)
+        # N_ji is the "transpose" of N along i and j
+        N_ji = np.array(N)
+        N_ji = np.swapaxes(N_ji,0,1)
+
+        # P is the frequentist mean
+        P = Lambda_ij/N_ij - Lambda_ji/N_ji
+        # C is the size of the confidence interval
+        C = sqrt(self.alpha*np.log(t+1)/N_ij)+sqrt(self.alpha*np.log(t+1)/N_ji)
+
+        # LCB and UCB
+        L = P-C
+        U = P+C
+
+        # The partial order
+        P_t = (L > 0).any(axis=(2,3))
+
+        if self.C = []:
+            if there is a chain in P_t:
+                self.C = the chain
+                ranking[:K] = the chain
+            else:
+                return self.shuffler.sample(ranking)
+        else:
+            ...
+
+
+
+
+
+
+
