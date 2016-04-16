@@ -393,7 +393,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # The partial order
         P_t = (L > 0).any(axis=(2,3))
 
-        if detected_loops_in(P_t):
+        if self.detected_loops_in(P_t):
             return self.shuffler.sample(ranking)
 
         if self.C != []:
