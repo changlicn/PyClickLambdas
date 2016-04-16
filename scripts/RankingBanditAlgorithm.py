@@ -390,11 +390,21 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         if self.C = []:
             if there is a chain in P_t:
                 self.C = the chain
-                ranking[:K] = the chain
+                ranking[:K] = self.C
+                return ranking
             else:
                 return self.shuffler.sample(ranking)
         else:
-            ...
+            topK = P_t[self.C[:K-1],self.C[1:K]]
+            notInC = sorted(set(range(L))-set(self.C))
+            bottomK = P_t[self.C[K-1],notInC]
+            if topK.all() and bottomK.all():
+                ranking[:K] = self.C
+                return ranking
+            else:
+                N = [self.C[ind] for ind in np.nonzero(topK)[0]]+...
+
+
 
 
 
