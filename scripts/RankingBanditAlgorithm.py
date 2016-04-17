@@ -442,8 +442,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         p = Lambda_ij / N_ij - Lambda_ji / N_ji
 
         # c is the size of the confidence interval
-        c = (np.sqrt(self.alpha * np.log(t + 1) / N_ij) + 
-             np.sqrt(self.alpha * np.log(t + 1) / N_ji))
+        c = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
+             np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
 
         # Get LCB.
         L = p - c
