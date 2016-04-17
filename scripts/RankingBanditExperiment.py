@@ -14,18 +14,21 @@ import cPickle as pickle
 
 import RankingBanditAlgorithm
 
+from RankingRegretEvaluation import ClickthroughRateRegretEvaluator
+
 from joblib import Parallel, delayed
 
 
 class RankingBanditExperiment(object):
     def __init__(self, query, click_model, ranking_model, n_documents,
-                 n_impressions, cutoff, outputdir):
+                 n_impressions, cutoff, compute_regret, outputdir):
         self.query = query
         self.click_model = click_model
         self.ranking_model = ranking_model
         self.n_documents = n_documents
         self.n_impressions = n_impressions
         self.cutoff = cutoff
+        self.compute_regret = compute_regret
         self.outputdir = outputdir
 
         # Sanity check that ranking model is really focused
@@ -35,11 +38,16 @@ class RankingBanditExperiment(object):
                              ' experiment is run with cutoff %d'
                              % (ranking_model.cutoff, cutoff))
 
-    def get_output_filename(self):
-        return '_'.join(map(str, [self.ranking_model.getName(),
-                                  self.click_model.getName(), self.query,
-                                  self.cutoff, self.n_impressions,
-                                  'rankings']))
+    def get_output_filepath(self, suffix=None):
+        filename = '_'.join(map(str, [self.ranking_model.getName(),
+                                      self.click_model.getName(), self.query,
+                                      self.cutoff, self.n_impressions]))
+
+        # Append the suffix if it is specified and non-empty.
+        if suffix is not None and len(suffix) > 0:
+            filename += '_' + suffix
+
+        return os.path.join(self.outputdir, filename)
 
     def execute(self):
         # Used internally by the click model.
@@ -71,22 +79,47 @@ class RankingBanditExperiment(object):
         info['cutoff'] = self.ranking_model.cutoff
         info['n_impressions'] = self.n_impressions
 
-        # Use NumPy's savez method which allows lazy loading, which becomes
-        # handy whenever one wants just to read the details of an experiment.
-        np.savez(os.path.join(self.outputdir, self.get_output_filename()),
-                 info=info, rankings=rankings)
+        # Save the specifications of the experiment...
+        with open(self.get_output_filepath(suffix='experiment') + '.nfo', 'wb') as ofile:
+            pickle.dump(info, ofile, protocol=-1)
+
+        # ... the rankings ...
+        np.save(self.get_output_filepath(suffix='rankings'), rankings)
+
+        # ... and (optionally) the cumulative regret.
+        if self.compute_regret:
+            # To get consistent results with regret calculated
+            # later (when `compute_regret` was False)
+            prepare_click_model(self.click_model)
+
+            # Create an instance of simple CTR regret evaluator.
+            evaluator = ClickthroughRateRegretEvaluator(self.click_model)
+
+            regret = evaluator.evaluate(info, rankings)
+
+            # Save the regret beside rankings.
+            np.save(self.get_output_filepath(suffix='regret'), regret)
 
 
-def prepare_click_models(source='./data/model_query_collection.pkl'):
+def load_click_models(source='./data/model_query_collection.pkl'):
     with open(source) as ifile:
         MQD = pickle.load(ifile)
 
     # For reproducibility -- re-seed the click models' RNGs.
     for click_model_name in MQD:
         for query in MQD[click_model_name]:
-            MQD[click_model_name][query]['model'].seed = 42
+            prepare_click_model(MQD[click_model_name][query]['model'])
 
     return MQD
+
+
+def prepare_click_model(click_model):
+    '''
+    Prepare the click model for reproducible experiment. This
+    consists of simply reseeding the internal random number
+    generator of the particular click model.
+    '''
+    click_model.seed = 42
 
 
 def parse_command_line_arguments(MQD):
@@ -99,6 +132,7 @@ def parse_command_line_arguments(MQD):
         getattr(RankingBanditAlgorithm, ranker_algorithm_name).update_parser(ranker_parser)
 
     parser.add_argument('-v', '--verbose', type=int, default=0, help='verbosity level')
+    parser.add_argument('-r', '--regret', action='store_true', help='indicates that the regret of the algorithm should be calculated as well')
     parser.add_argument('-q', '--query', choices=['all'] + MQD['UBM'].keys(), default='all', help='query for which the experiment is executed')
     parser.add_argument('-m', '--click-model', choices=['all'] + MQD.keys(), default='all', help='user model used for generating clicks')
     parser.add_argument('-n', '--n-impressions', type=int, default=1, help='number of impressions')
@@ -111,7 +145,7 @@ def parse_command_line_arguments(MQD):
 
 def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
                         click_model_names, queries, n_impressions,
-                        cutoff, outputdir):
+                        cutoff, compute_regret, outputdir):
     '''
     Method that prepares experiments.
     '''
@@ -134,7 +168,7 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             experiments.append(RankingBanditExperiment(query, click_model, ranking_model,
                                                        n_documents, n_impressions, cutoff,
-                                                       outputdir))
+                                                       compute_regret, outputdir))
     return experiments
 
 
@@ -147,7 +181,7 @@ def parallel_helper(obj, methodname, *args, **kwargs):
 
 if __name__ == '__main__':
     # Load click models trained for selected queries.
-    MQD = prepare_click_models()
+    MQD = load_click_models()
 
     kwargs = parse_command_line_arguments(MQD)
 
@@ -172,6 +206,9 @@ if __name__ == '__main__':
     else:
         queries = [queries]
 
+    # the regret computation indicator
+    compute_regret = kwargs.pop('regret')
+
     # the number of impressions (time steps) ...
     n_impressions = kwargs.pop('n_impressions')
 
@@ -195,7 +232,7 @@ if __name__ == '__main__':
     # Prepare experiments based on the parsed parameters...
     experiments = prepare_experiments(MQD, ranking_model_name, kwargs,
                                       click_model_names, queries, n_impressions,
-                                      cutoff, outputdir)
+                                      cutoff, compute_regret, outputdir)
 
     # and run them, conveniently, in parallel loops.
     Parallel(n_jobs=n_jobs, verbose=verbose)(
