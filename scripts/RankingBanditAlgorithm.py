@@ -358,12 +358,17 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             for v in xrange(self.n_documents):
                 n_beating_d[v] -= P[u, v]
                 if n_beating_d[v] == 0:
-                    stack.push[v]
-            chain.push(u)
+                    stack.append(v)
+            chain.append(u)
+            if len(chain) == self.cutoff:
+                break
 
         # A preference cycle was detected?
-        if len(chain) != self.n_documents:
+        if len(chain) != self.cutoff:
             return []
+
+        for d in (set(range(self.n_documents)) - set(chain)):
+            chain.append(d)
 
         # Check there is total ordering in top K documents,
         # (if not return empty array) ...
@@ -382,7 +387,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         return np.array(chain, dtype='int32')
 
     def detected_loops_in(P_t):
-        return len(get_chain_in(P_t)) > 0
+        return False
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
