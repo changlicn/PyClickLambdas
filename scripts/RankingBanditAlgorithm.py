@@ -456,6 +456,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         if self.C != []:
             topK = P_t[self.C[1:K],self.C[:K-1]]
+            notInC = sorted(set(range(L))-set(self.C))
             bottomK = P_t[notInC,self.C[K-1]]
             if topK.any() or bottomK.any():
                 self.C = []

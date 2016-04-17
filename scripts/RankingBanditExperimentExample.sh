@@ -3,20 +3,20 @@
 echo "Horizon = $1"
 date
 
-# ============================================================================
-# CascadeUCB1 algorithm
-# ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm_Horizon$1
-echo "Done with CascadeUCB"
-date
+# # ============================================================================
+# # CascadeUCB1 algorithm
+# # ============================================================================
+# python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm_Horizon$1
+# echo "Done with CascadeUCB"
+# date
 
 
-# ============================================================================
-# CascadeKL-UCB algorithm
-# ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm_Horizon$1
-echo "Done with CascadeKL-UCB"
-date
+# # ============================================================================
+# # CascadeKL-UCB algorithm
+# # ============================================================================
+# python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm_Horizon$1
+# echo "Done with CascadeKL-UCB"
+# date
 
 
 # ============================================================================
