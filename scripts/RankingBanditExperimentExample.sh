@@ -14,7 +14,7 @@ date
 # ============================================================================
 # CascadeKL-UCB algorithm
 # ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm -a 1.5 experiments/CascadeKLUCBAlgorithm_Horizon$1
+python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm_Horizon$1
 echo "Done with CascadeKL-UCB"
 date
 
