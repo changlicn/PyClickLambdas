@@ -462,7 +462,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                 self.C = []
                 self.feedback_model.reset()
 
-        if self.C = []:
+        if self.C == []:
             chain = self.get_chain_in(P_t)
             if chain != []:
                 self.C = chain
