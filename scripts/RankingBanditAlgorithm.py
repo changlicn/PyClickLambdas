@@ -451,8 +451,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # The partial order.
         P_t = (L > 0).any(axis=(2, 3))
 
-        if detected_loops_in(P_t):
-            # TT: What should happen here?
+        # if detected_loops_in(P_t):
+        #     # TT: What should happen here?
 
         if self.C != []:
             topK = P_t[self.C[1:K],self.C[:K-1]]
