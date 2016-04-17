@@ -486,7 +486,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                 N = np.nonzero(topK)[0].tolist()+\
                     (np.nonzero(bottomK)[0]+K).tolist()
                 k = self.random_state.choice(N)
-                if k<K:
+                if k<K-1:
                     if self.random_state.rand() < 0.5:
                         ranking[:K] = self.C
                         return ranking
@@ -495,7 +495,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                         ranking[k] = self.C[k+1]
                         ranking[k+1] = self.C[k]
                         return ranking
-                elif k>K:
+                elif k>K-1:
                     if self.random_state.rand() < 0.5:
                         ranking[:K] = self.C
                         ranking[K-2] = notInC[k-K]
