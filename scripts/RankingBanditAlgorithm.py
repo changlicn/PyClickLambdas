@@ -341,7 +341,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # Queue keeps documents in the order in which they
         # should be ranked.
-        queue = np.where(n_beating_d == 0).tolist()
+        queue = np.where(n_beating_d == 0)[0].tolist()
 
         # There cannot be more than 1 unbeaten document
         # if we are looking for a single chain.
@@ -353,12 +353,18 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # by P_t (preferences).
         chain = []
 
+        indicator = np.zeros(self.n_documents,dtype="bool")
+
+        for d in queue:
+            indicator[d] = True
+
         while len(queue) > 0:
             u = queue.pop(0)
             for v in xrange(self.n_documents):
-                n_beating_d[v] -= P[u, v]
-                if n_beating_d[v] == 0:
+                n_beating_d[v] -= P_t[u, v]
+                if not indicator[v] and n_beating_d[v] == 0:
                     queue.append(v)
+                    indicator[v] = True
             chain.append(u)
             if len(chain) == self.cutoff:
                 break
