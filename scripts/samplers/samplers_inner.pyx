@@ -5,6 +5,8 @@
 
 from cpython cimport Py_INCREF, PyObject
 
+import numbers
+
 import numpy as np
 cimport numpy as np
 np.import_array()
@@ -103,8 +105,15 @@ cdef class UniformRankingSampler(object):
 
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
-        else:
+        elif isinstance(random_state, np.random.RandomState):
             self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+        elif isinstance(random_state, (numbers.Integral, np.integer)):
+            if random_state == 0:
+                raise ValueError('random_state cannot be 0')
+            self.rand_r_state = random_state
+        else:
+            raise ValueError('random_state must be an integer or an instance'
+                             ' of numpy.random.RandomState')
 
     def __dealloc__(self):
         free(self.S)
@@ -114,7 +123,7 @@ cdef class UniformRankingSampler(object):
         Reduce reimplementation, for pickling.
         '''
         return (UniformRankingSampler, (__wrap_in_1d_double(self, self.L, self.S),
-                                        self.random_state))
+                                        self.rand_r_state))
 
     def sample(self, np.ndarray[INT_t, ndim=1] out=None):
         ''' 
@@ -180,8 +189,15 @@ cdef class MultinomialRankingSampler(object):
 
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
-        else:
+        elif isinstance(random_state, np.random.RandomState):
             self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+        elif isinstance(random_state, (numbers.Integral, np.integer)):
+            if random_state == 0:
+                raise ValueError('random_state cannot be 0')
+            self.rand_r_state = random_state
+        else:
+            raise ValueError('random_state must be an integer or an instance'
+                             ' of numpy.random.RandomState')
 
     def __dealloc__(self):
         free(self.S)
@@ -263,8 +279,15 @@ cdef class SoftmaxRankingSampler(object):
         
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
-        else:
+        elif isinstance(random_state, np.random.RandomState):
             self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+        elif isinstance(random_state, (numbers.Integral, np.integer)):
+            if random_state == 0:
+                raise ValueError('random_state cannot be 0')
+            self.rand_r_state = random_state
+        else:
+            raise ValueError('random_state must be an integer or an instance'
+                             ' of numpy.random.RandomState')
     
     def __dealloc__(self):
         free(self.S)
