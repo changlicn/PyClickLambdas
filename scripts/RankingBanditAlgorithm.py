@@ -335,7 +335,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         '''
         return 'RelativeRankingAlgorithm'
 
-    def get_chain_in(P_t):
+    def get_chain_in(self, P_t):
         # The number of (other) documents beating each document.
         n_beating_d = P_t.sum(axis=0)
 
@@ -392,7 +392,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # above are satisfied.
         return np.array(chain, dtype='int32')
 
-    def detected_loops_in(P_t):
+    def detected_loops_in(self, P_t):
         return False
 
     def get_ranking(self, ranking):
@@ -442,8 +442,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         p = Lambda_ij / N_ij - Lambda_ji / N_ji
 
         # c is the size of the confidence interval
-        c = (sqrt(self.alpha * np.log(t + 1) / N_ij) + 
-             sqrt(self.alpha * np.log(t + 1) / N_ji))
+        c = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
+             np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
 
         # Get LCB.
         L = p - c
