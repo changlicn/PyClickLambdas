@@ -373,8 +373,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         if len(chain) != self.cutoff:
             return []
 
-        # for d in (set(range(self.n_documents)) - set(chain)):
-        #     chain.append(d)
+        for d in (set(range(self.n_documents)) - set(chain)):
+            chain.append(d)
 
         # Check there is total ordering in top K documents,
         # (if not return empty array) ...
@@ -390,7 +390,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # ... return the chain if all conditions
         # above are satisfied.
-        return np.array(chain, dtype='int32')
+        return np.array(chain[:self.cutoff], dtype='int32')
 
     def detected_loops_in(self, P_t):
         return False
