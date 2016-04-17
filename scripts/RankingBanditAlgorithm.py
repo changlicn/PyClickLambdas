@@ -516,7 +516,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
     def __init__(self, *args, **kwargs):
-        super(RelativeRankingAlgorithm, self).__init__(*args, **kwargs)
+        super(CoarseRelativeRankingAlgorithm, self).__init__(*args, **kwargs)
         try:
             self.t = 1
             self.alpha = kwargs['alpha']
@@ -536,7 +536,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
     @classmethod
     def update_parser(cls, parser):
-        super(RelativeRankingAlgorithm, cls).update_parser(parser)
+        super(CoarseRelativeRankingAlgorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
         parser.add_argument('-g', '--gamma', type=float, required = True,
@@ -547,7 +547,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         '''
         Returns the name of the algorithm.
         '''
-        return 'RelativeRankingAlgorithm'
+        return 'CoarseRelativeRankingAlgorithm'
 
     def get_chain_in(self, P_t):
         # The number of (other) documents beating each document.
