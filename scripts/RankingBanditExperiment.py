@@ -18,22 +18,28 @@ from joblib import Parallel, delayed
 
 
 class RankingBanditExperiment(object):
-    def __init__(self, click_model_name, query, ranking_model, click_model,
-                 n_documents, n_impressions, cutoff, outputdir):
-        self.click_model_name = click_model_name
+    def __init__(self, query, click_model, ranking_model, n_documents,
+                 n_impressions, cutoff, outputdir):
         self.query = query
-        self.ranking_model = ranking_model
         self.click_model = click_model
+        self.ranking_model = ranking_model
         self.n_documents = n_documents
         self.n_impressions = n_impressions
         self.cutoff = cutoff
         self.outputdir = outputdir
 
+        # Sanity check that ranking model is really focused
+        # only to find top 'cutoff'-ranking.
+        if ranking_model.cutoff != cutoff:
+            raise ValueError('ranking model is set with cutoff %d but'
+                             ' experiment is run with cutoff %d'
+                             % (ranking_model.cutoff, cutoff))
+
     def get_output_filename(self):
-        return '_'.join(map(str, [self.ranking_model.__class__.__name__,
-                                  self.click_model_name, self.query,
+        return '_'.join(map(str, [self.ranking_model.getName(),
+                                  self.click_model.getName(), self.query,
                                   self.cutoff, self.n_impressions,
-                                  'rankings.pkl']))
+                                  'rankings']))
 
     def execute(self):
         # Used internally by the click model.
@@ -41,7 +47,7 @@ class RankingBanditExperiment(object):
 
         # History of all rankings produced by the model.
         rankings = np.empty((self.n_impressions, self.n_documents),
-                           dtype='int32')
+                            dtype='int32')
 
         # Run for the specified number of iterations.
         for t in xrange(self.n_impressions):
@@ -58,16 +64,17 @@ class RankingBanditExperiment(object):
             # ... and allow the model to learn from them.
             self.ranking_model.set_feedback(ranking, clicks)
 
-        history = {}
-        history['query'] = self.query
-        history['click_model'] = self.click_model_name
-        history['ranking_model'] = self.ranking_model
-        history['cutoff'] = self.ranking_model.cutoff
-        history['n_impressions'] = self.n_impressions
-        history['rankings'] = rankings
+        info = {}
+        info['query'] = self.query
+        info['click_model'] = self.click_model
+        info['ranking_model'] = self.ranking_model
+        info['cutoff'] = self.ranking_model.cutoff
+        info['n_impressions'] = self.n_impressions
 
-        with open(os.path.join(self.outputdir, self.get_output_filename()), 'wb') as ofile:
-            pickle.dump(history, ofile, protocol=-1)
+        # Use NumPy's savez method which allows lazy loading, which becomes
+        # handy whenever one wants just to read the details of an experiment.
+        np.savez(os.path.join(self.outputdir, self.get_output_filename()),
+                 info=info, rankings=rankings)
 
 
 def prepare_click_models(source='./data/model_query_collection.pkl'):
@@ -125,10 +132,9 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             click_model = MQD[click_model_name][query]['model']
 
-            experiments.append(RankingBanditExperiment(click_model_name, query,
-                                                       ranking_model, click_model,
-                                                       n_documents, n_impressions,
-                                                       cutoff, outputdir))
+            experiments.append(RankingBanditExperiment(query, click_model, ranking_model,
+                                                       n_documents, n_impressions, cutoff,
+                                                       outputdir))
     return experiments
 
 
