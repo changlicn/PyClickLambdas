@@ -446,17 +446,16 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
              np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
 
         # Get LCB.
-        L = p - c
+        LCB = p - c
 
         # The partial order.
-        P_t = (L > 0).any(axis=(2, 3))
+        P_t = (LCB > 0).any(axis=(2, 3))
 
         # if detected_loops_in(P_t):
         #     # TT: What should happen here?
 
         if self.C != []:
             topK = P_t[self.C[1:K],self.C[:K-1]]
-            notInC = sorted(set(range(L))-set(self.C))
             bottomK = P_t[notInC,self.C[K-1]]
             if topK.any() or bottomK.any():
                 self.C = []
