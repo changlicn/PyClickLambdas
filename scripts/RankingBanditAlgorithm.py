@@ -339,13 +339,13 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # The number of (other) documents beating each document.
         n_beating_d = P_t.sum(axis=0)
 
-        # Stack keeps documents in the order in which they
+        # Queue keeps documents in the order in which they
         # should be ranked.
-        stack = np.where(n_beating_d == 0).tolist()
+        queue = np.where(n_beating_d == 0).tolist()
 
         # There cannot be more than 1 unbeaten document
         # if we are looking for a single chain.
-        if len(stack) > 1:
+        if len(queue) > 1:
             return []
 
         # Topological order (preference ordering) of
@@ -353,12 +353,12 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # by P_t (preferences).
         chain = []
 
-        while len(stack) > 0:
-            u = stack.pop()
+        while len(queue) > 0:
+            u = queue.pop(0)
             for v in xrange(self.n_documents):
                 n_beating_d[v] -= P[u, v]
                 if n_beating_d[v] == 0:
-                    stack.append(v)
+                    queue.append(v)
             chain.append(u)
             if len(chain) == self.cutoff:
                 break
