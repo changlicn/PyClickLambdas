@@ -478,9 +478,9 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                 try:
                     ranking[:K] = self.C
                 except ValueError:
-                    print self.C
-                    print ranking
-                    raise ValueError
+                    print "self.C =",self.C
+                    print "ranking =",ranking
+                    a = badvar
                 return ranking
             else:
                 N = np.nonzero(topK)[0].tolist()+\
