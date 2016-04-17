@@ -475,7 +475,12 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             notInC = sorted(set(range(L))-set(self.C))
             bottomK = P_t[self.C[K-1],notInC]
             if topK.all() and bottomK.all():
-                ranking[:K] = self.C
+                try:
+                    ranking[:K] = self.C
+                except ValueError:
+                    print self.C
+                    print ranking
+                    raise ValueError
                 return ranking
             else:
                 N = np.nonzero(topK)[0].tolist()+\
