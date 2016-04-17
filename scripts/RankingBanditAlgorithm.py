@@ -506,4 +506,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                         ranking[K-1] = notInC[k-K]
                         return ranking
                 else:
+                    print "(k,K) =",(k,K)
+                    print "N =",N
+                    print "(topK,bottomK) =", (topK,bottomK)
                     raise ValueError,"Unexpected non-conforming index"
