@@ -60,6 +60,31 @@ class BaseClickLambdasAlgorithm(object):
         pass
 
 
+class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents, cutoff):
+        super(RefinedSkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents), dtype='float64')
+        self.counts = np.empty((n_documents, n_documents), dtype='float64')
+        self.reset()
+
+    def update(self, ranking, clicks):
+        for i in range(self.cutoff - 1):
+            d_i = ranking[i]
+            for j in range(i + 1, self.cutoff):
+                d_j = ranking[j]
+                if clicks[i] < clicks[j]:
+                    self.lambdas[d_j, d_i] += 1.0
+                self.counts[d_j, d_i] += 1.0
+
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
+
+    def statistics(self):
+        return self.lambdas, self.counts
+
+
 class RefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
 
     def __init__(self, n_documents, cutoff):
