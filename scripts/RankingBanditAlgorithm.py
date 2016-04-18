@@ -464,7 +464,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             ranking[:K] = self.C[:K]
 
             if not (topK.all() and bottomK.all()):
-                N = np.r_[np.where(topK == 0)[0] + (K + np.where(bottomK == 0)[0])]
+                N = np.r_[np.where(~topK)[0], (K + np.where(~bottomK)[0])]
                 k = self.random_state.choice(N)
 
                 if k < K - 1:
