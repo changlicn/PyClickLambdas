@@ -356,6 +356,24 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         if self.t < self.T_exp:
             self.shuffler.sample(ranking)
         elif self.t == self.T_exp:
+            # Lambda_ij is the same as Lambdas
+            Lambda_ij = Lambdas
+
+            # Lambda_ji is the transpose of Lambda_ij. This operation
+            # is very cheap in NumPy >= 1.10 because only a view needs
+            # to be created.
+            Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+            # N_ij is the same as N.
+            N_ij = N
+
+            # N_ji is the transpose of N_ij. Similarly to construction
+            # of Lambda_ji this can turn out to be very cheap.
+            N_ji = np.swapaxes(N_ij, 0, 1)
+
+            # P is the frequentist mean.
+            P = Lambda_ij / N_ij - Lambda_ji / N_ji
+
             self.C = P.sum(axis=(1,2,3)).argsort()
             ranking[:K] = self.C[:K]
             self.feedback_model.reset()
