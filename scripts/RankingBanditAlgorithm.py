@@ -318,7 +318,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                           ClickLambdasAlgorithm.RefinedSkipClickLambdasAlgorithm):
             raise ValueError('expected RefinedSkipClickLambdasAlgorithm for '
                              'feedback_model but received %s'
-                             % type(self.feedback_model))
+                             % type(self.feedback_model).__name__)
 
     @classmethod
     def update_parser(cls, parser):
@@ -498,7 +498,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                           ClickLambdasAlgorithm.SkipClickLambdasAlgorithm):
             raise ValueError('expected SkipClickLambdasAlgorithm for '
                              'feedback_model but received %s'
-                             % type(self.feedback_model))
+                             % type(self.feedback_model).__name__)
 
     @classmethod
     def update_parser(cls, parser):
@@ -568,10 +568,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # ... return the chain if all conditions
         # above are satisfied.
-        return np.array(chain[:self.cutoff], dtype='int32')
-
-    def detected_loops_in(self, P_t):
-        return False
+        return np.array(chain, dtype='int32')
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
@@ -586,35 +583,17 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # in this order each time step.
         self.t += 1
 
-        # Whenever you would like to restart the algorithm, call
-        # self.feedback_model.reset().        
-
-        # Put the ranking produced by the algorithm into ranking,
-        # which is an array of ints with shape = [self.n_documents].
-        ranking[:] = np.arange(L, dtype='int32')
-
-        # It is not needed to create rankings of size L, you can only
-        # set the top K documents, the rest of documents will not be
-        # 'seen' by the click model.
-
-        # Sanity check that the arrays are in order klij.
-        if Lambdas.shape != (L, L, K, K):
-            raise ValueError('misordered dimension in lambdas and counts')
-
         # Lambda_ij is the same as Lambdas
         Lambda_ij = Lambdas
 
-        # Lambda_ji is the transpose of Lambda_ij. This operation
-        # is very cheap in NumPy >= 1.10 because only a view needs
-        # to be created.
-        Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+        # Lambda_ji is the transpose of Lambda_ij.
+        Lambda_ji = Lambda_ij.T
 
         # N_ij is the same as N.
         N_ij = N
 
-        # N_ji is the transpose of N_ij. Similarly to construction
-        # of Lambda_ji this can turn out to be very cheap.
-        N_ji = np.swapaxes(N_ij, 0, 1)
+        # N_ji is the transpose of N_ij.
+        N_ji = N_ij.T
 
         # p is the frequentist mean.
         p = Lambda_ij / N_ij - Lambda_ji / N_ji
@@ -627,64 +606,47 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         LCB = p - c
 
         # The partial order.
-        P_t = (LCB > 0).any(axis=(2, 3))
-
-        # if detected_loops_in(P_t):
-        #     # TT: What should happen here?
+        P_t = (LCB > 0)
 
         if self.C != []:
-            topK = P_t[self.C[1:K],self.C[:K-1]]
-            notInC = sorted(set(range(L))-set(self.C))
-            bottomK = P_t[notInC,self.C[K-1]]
-            if topK.any() or bottomK.any():
+            # aboveK = [P_t[C[i + 1], C[i]] for i in range(K - 1)].
+            aboveK = P_t[self.C[1:K], self.C[:(K - 1)]]
+            # belowK = [P_t[C[K + i], C_[K - 1]] for i in range (L - K)].
+            belowK = P_t[self.C[K:], self.C[K - 1]]
+
+            if aboveK.any() or belowK.any():
                 self.C = []
                 self.feedback_model.reset()
 
         if self.C == []:
             chain = self.get_chain_in(P_t)
+
             if chain != []:
                 self.C = chain
                 ranking[:K] = self.C[:K]
-                return ranking
+
             else:
-                return self.shuffler.sample(ranking)
+                self.shuffler.sample(ranking)
+
         else:
-            topK = P_t[self.C[:K-1],self.C[1:K]]
-            notInC = sorted(set(range(L))-set(self.C))
-            bottomK = P_t[self.C[K-1],notInC]
-            if topK.all() and bottomK.all():
-                try:
-                    ranking[:K] = self.C
-                except ValueError:
-                    print "self.C =",self.C
-                    print "ranking =",ranking
-                    a = badvar
-                return ranking
-            else:
-                N = np.nonzero(topK)[0].tolist()+\
-                    (np.nonzero(bottomK)[0]+K).tolist()
+            # topK = [P_t[C[i], C[i + 1]] for i in range(K - 1)].
+            topK = P_t[self.C[:(K - 1)], self.C[1:K]]
+            # bottomK = [P_t[C[K - 1], C_[K + i]] for i in range (L - K)].
+            bottomK = P_t[self.C[K - 1], self.C[K:]]
+
+            ranking[:K] = self.C[:K]
+
+            if not (topK.all() and bottomK.all()):
+                N = np.r_[np.where(~topK)[0], (K + np.where(~bottomK)[0])]
                 k = self.random_state.choice(N)
-                if k<K-1:
+
+                if k < K - 1:
                     if self.random_state.rand() < 0.5:
-                        ranking[:K] = self.C
-                        return ranking
-                    else:
-                        ranking[:K] = self.C[:]
-                        ranking[k] = self.C[k+1]
-                        ranking[k+1] = self.C[k]
-                        return ranking
-                elif k>K-1:
+                        ranking[k], ranking[k + 1] = self.C[k + 1], self.C[k]
+
+                elif k > K - 1:
                     if self.random_state.rand() < 0.5:
-                        ranking[:K] = self.C
-                        ranking[K-2] = notInC[k-K]
-                        return ranking
+                        ranking[K - 2] = self.C[k]
                     else:
-                        ranking[:K] = self.C[:]
-                        ranking[K-2] = self.C[K-1]
-                        ranking[K-1] = notInC[k-K]
-                        return ranking
-                else:
-                    print "(k,K) =",(k,K)
-                    print "N =",N
-                    print "(topK,bottomK) =", (topK,bottomK)
-                    raise ValueError,"Unexpected non-conforming index"
+                        ranking[K - 2] = self.C[K - 1]
+                        ranking[K - 1] = self.C[k]
