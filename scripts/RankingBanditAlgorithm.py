@@ -306,6 +306,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         try:
             self.t = 1
             self.alpha = kwargs['alpha']
+            self.N_exp = 10
+            self.T_exp = self.N_exp * (self.n_documents*self.cutoff) ** 2
             self.C = []
             self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
                                                            dtype='float64'),
@@ -332,6 +334,143 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         Returns the name of the algorithm.
         '''
         return 'RelativeRankingAlgorithm'
+
+    def get_ranking(self, ranking):
+        # Get the required statistics from the feedback model.
+        Lambdas, N = self.feedback_model.statistics()
+
+        # Number of query documents and cutoff are available field variables.
+        L = self.n_documents
+        K = self.cutoff
+
+        # Keep track of time inside the model. It is guaranteed that the pair
+        # of methods get_ranking and set_feedback is going to be called
+        # in this order each time step.
+        self.t += 1
+
+        # Sanity check that the arrays are in order klij.
+        if Lambdas.shape != (L, L, K, K):
+            raise ValueError('misordered dimension in lambdas and counts')
+
+        # Lambda_ij is the same as Lambdas
+        Lambda_ij = Lambdas
+
+        # Lambda_ji is the transpose of Lambda_ij. This operation
+        # is very cheap in NumPy >= 1.10 because only a view needs
+        # to be created.
+        Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+        # N_ij is the same as N.
+        N_ij = N
+
+        # N_ji is the transpose of N_ij. Similarly to construction
+        # of Lambda_ji this can turn out to be very cheap.
+        N_ji = np.swapaxes(N_ij, 0, 1)
+
+        # P is the frequentist mean.
+        P = Lambda_ij / N_ij - Lambda_ji / N_ji
+
+        # C is the size of the confidence interval
+        C = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
+             np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
+
+        # Get LCB.
+        LCB = P - C
+
+        # The partial order.
+        P_t = (LCB > 0).any(axis=(2, 3))
+
+        if self.t < self.T_exp:
+            self.shuffler.sample(ranking)
+        elif self.t == self.T_exp:
+            self.C = P.sum(axis=(1,2,3)).argsort()
+            ranking[:K] = self.C[:K]
+            self.feedback_model.reset()
+        else:
+            # topKI = [P_t[C[i + 1], C[i]] for i in range(K - 1)].
+            topKI = P_t[self.C[1:K], self.C[:(K - 1)]]
+            # bottomKI = [P_t[C_[K + i], C[K - 1]] for i in range (L - K)].
+            bottomKI = P_t[self.C[K:], self.C[K - 1]]
+
+            I = np.r_[np.where(topKI)[0], (K + np.where(bottomKI)[0])]
+            if topKI.any() or bottomKI.any():
+                k = I.min()
+
+                if k < K - 1:
+                    tempC = np.array(self.C, dtype='int32')
+                    tempC[k], tempC[k+1] = self.C[k+1], self.C[k]
+                    self.C = np.array(tempC, dtype='int32')
+                    self.feedback_model.lambdas[:,:,k:,k:] = 1.
+                    self.feedback_model.counts[:,:,k:,k:] = 2.
+                    Lambdas, N = self.feedback_model.statistics()
+                    if (Lambdas[:,:,k:,k:] != 1.).any():
+                        print "Lambdas[:,:,k:,k:] ="
+                        print Lambdas[:,:,k:,k:]
+                        raise ValueError, 'It seems like the reset did not take effect: the above matrix should be all 1s!'
+                
+                elif k > K - 1:
+                    tempC = np.array(self.C, dtype='int32')
+                    tempC[K-1], tempC[k] = self.C[k], self.C[K-1]
+                    self.C = np.array(tempC, dtype='int32')
+
+
+            # topKN = [P_t[C[i], C[i + 1]] for i in range(K - 1)].
+            topKN = P_t[self.C[:(K - 1)], self.C[1:K]]
+            # bottomKN = [P_t[C[K - 1], C_[K + i]] for i in range (L - K)].
+            bottomKN = P_t[self.C[K - 1], self.C[K:]]
+
+            ranking[:K] = self.C[:K]
+
+            if not (topKN.all() and bottomKN.all()):
+                N = np.r_[np.where(~topKN)[0], (K + np.where(~bottomKN)[0])]
+                k = self.random_state.choice(N)
+
+                if k < K - 1:
+                    if self.random_state.rand() < 0.5:
+                        ranking[k], ranking[k + 1] = self.C[k + 1], self.C[k]
+
+                elif k > K - 1:
+                    if self.random_state.rand() < 0.5:
+                        ranking[K - 2] = self.C[k]
+                    else:
+                        ranking[K - 2] = self.C[K - 1]
+                        ranking[K - 1] = self.C[k]
+
+
+
+class RelativeRankingAlgorithmV1_TooSlow(BaseLambdasRankingBanditAlgorithm):
+
+    def __init__(self, *args, **kwargs):
+        super(RelativeRankingAlgorithmV1_TooSlow, self).__init__(*args, **kwargs)
+        try:
+            self.t = 1
+            self.alpha = kwargs['alpha']
+            self.C = []
+            self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+                                                           dtype='float64'),
+                                                  random_state=self.random_state)
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+        # Validate the type of the feedback model.
+        if not isinstance(self.feedback_model,
+                          ClickLambdasAlgorithm.RefinedSkipClickLambdasAlgorithm):
+            raise ValueError('expected RefinedSkipClickLambdasAlgorithm for '
+                             'feedback_model but received %s'
+                             % type(self.feedback_model).__name__)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RelativeRankingAlgorithmV1_TooSlow, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=0.51,
+                            required=True, help='alpha parameter')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RelativeRankingAlgorithmV1_TooSlow'
 
     def get_chain_in(self, P_t):
         # The number of (other) documents beating each document.
@@ -477,6 +616,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                     else:
                         ranking[K - 2] = self.C[K - 1]
                         ranking[K - 1] = self.C[k]
+
+
 
 
 class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
