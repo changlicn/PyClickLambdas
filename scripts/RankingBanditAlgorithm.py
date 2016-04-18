@@ -306,7 +306,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         try:
             self.t = 1
             self.alpha = kwargs['alpha']
-            self.N_exp = 10
+            self.N_exp = 100
             self.T_exp = self.N_exp * (self.n_documents*self.cutoff) ** 2
             self.C = []
             self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
