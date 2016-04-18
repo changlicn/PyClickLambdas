@@ -388,7 +388,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
         # ... return the chain if all conditions
         # above are satisfied.
-        return np.array(chain[:self.cutoff], dtype='int32')
+        return np.array(chain, dtype='int32')
 
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
@@ -464,7 +464,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             ranking[:K] = self.C[:K]
 
             if not (topK.all() and bottomK.all()):
-                N = np.r_[np.where(topK == 0)[0] + (K + np.where(bottomK)[0])]
+                N = np.r_[np.where(topK == 0)[0] + (K + np.where(bottomK == 0)[0])]
                 k = self.random_state.choice(N)
 
                 if k < K - 1:
