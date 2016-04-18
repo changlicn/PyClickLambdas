@@ -6,23 +6,23 @@ date
 # ============================================================================
 # CascadeUCB1 algorithm
 # ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm_Horizon$1
-echo "Done with CascadeUCB"
-date
+# python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeUCB1Algorithm -a 1.5 experiments/CascadeUCB1Algorithm_Horizon$1
+# echo "Done with CascadeUCB"
+# date
 
 
 # ============================================================================
 # CascadeKL-UCB algorithm
 # ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm_Horizon$1
-echo "Done with CascadeKL-UCB"
-date
+# python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm_Horizon$1
+# echo "Done with CascadeKL-UCB"
+# date
 
 
 # ============================================================================
 # RelativeRanking algorithm
 # ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret RelativeRankingAlgorithm -a 0.5 -g 0.0 -f RefinedSkipClickLambdasAlgorithm experiments/RelativeRankingAlgorithm_Horizon$1
+python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret RelativeRankingAlgorithm -a 0.1 -g 0.0 -f RefinedSkipClickLambdasAlgorithm experiments/RelativeRankingAlgorithm_Horizon$1
 echo "Done with RR!"
 date
 
