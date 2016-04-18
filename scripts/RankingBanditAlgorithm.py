@@ -348,37 +348,10 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # in this order each time step.
         self.t += 1
 
-        # Sanity check that the arrays are in order klij.
+        # Sanity check that the arrays are in order ijkl.
         if Lambdas.shape != (L, L, K, K):
             raise ValueError('misordered dimension in lambdas and counts')
 
-        # Lambda_ij is the same as Lambdas
-        Lambda_ij = Lambdas
-
-        # Lambda_ji is the transpose of Lambda_ij. This operation
-        # is very cheap in NumPy >= 1.10 because only a view needs
-        # to be created.
-        Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
-
-        # N_ij is the same as N.
-        N_ij = N
-
-        # N_ji is the transpose of N_ij. Similarly to construction
-        # of Lambda_ji this can turn out to be very cheap.
-        N_ji = np.swapaxes(N_ij, 0, 1)
-
-        # P is the frequentist mean.
-        P = Lambda_ij / N_ij - Lambda_ji / N_ji
-
-        # C is the size of the confidence interval
-        C = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
-             np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
-
-        # Get LCB.
-        LCB = P - C
-
-        # The partial order.
-        P_t = (LCB > 0).any(axis=(2, 3))
 
         if self.t < self.T_exp:
             self.shuffler.sample(ranking)
@@ -387,6 +360,34 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             ranking[:K] = self.C[:K]
             self.feedback_model.reset()
         else:
+            # Lambda_ij is the same as Lambdas
+            Lambda_ij = Lambdas
+
+            # Lambda_ji is the transpose of Lambda_ij. This operation
+            # is very cheap in NumPy >= 1.10 because only a view needs
+            # to be created.
+            Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+            # N_ij is the same as N.
+            N_ij = N
+
+            # N_ji is the transpose of N_ij. Similarly to construction
+            # of Lambda_ji this can turn out to be very cheap.
+            N_ji = np.swapaxes(N_ij, 0, 1)
+
+            # P is the frequentist mean.
+            P = Lambda_ij / N_ij - Lambda_ji / N_ji
+
+            # C is the size of the confidence interval
+            C = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
+                 np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
+
+            # Get LCB.
+            LCB = P - C
+
+            # The partial order.
+            P_t = (LCB > 0).any(axis=(2, 3))
+
             # topKI = [P_t[C[i + 1], C[i]] for i in range(K - 1)].
             topKI = P_t[self.C[1:K], self.C[:(K - 1)]]
             # bottomKI = [P_t[C_[K + i], C[K - 1]] for i in range (L - K)].
