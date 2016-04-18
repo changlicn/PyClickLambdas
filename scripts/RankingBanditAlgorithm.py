@@ -307,11 +307,11 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             self.t = 1
             self.alpha = kwargs['alpha']
             self.C = []
+            self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+                                                           dtype='float64'),
+                                                  random_state=self.random_state)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
-        self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
-                                                     dtype='float64'),
-                                            random_state=self.random_state)
 
         # Validate the type of the feedback model.
         if not isinstance(self.feedback_model,
@@ -325,8 +325,6 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         super(RelativeRankingAlgorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
-        parser.add_argument('-g', '--gamma', type=float, required = True,
-                            help='continuation probability lower bound')
 
     @classmethod
     def getName(cls):
@@ -392,9 +390,6 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # above are satisfied.
         return np.array(chain[:self.cutoff], dtype='int32')
 
-    def detected_loops_in(self, P_t):
-        return False
-
     def get_ranking(self, ranking):
         # Get the required statistics from the feedback model.
         Lambdas, N = self.feedback_model.statistics()
@@ -408,19 +403,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # in this order each time step.
         self.t += 1
 
-        # Whenever you would like to restart the algorithm, call
-        # self.feedback_model.reset().        
-
-        # Put the ranking produced by the algorithm into ranking,
-        # which is an array of ints with shape = [self.n_documents].
-        ranking[:] = np.arange(L, dtype='int32')
-
-        # It is not needed to create rankings of size L, you can only
-        # set the top K documents, the rest of documents will not be
-        # 'seen' by the click model.
-
         # Sanity check that the arrays are in order klij.
-        if Lambdas.shape == (K, K, L, L):
+        if Lambdas.shape != (L, L, K, K):
             raise ValueError('misordered dimension in lambdas and counts')
 
         # Lambda_ij is the same as Lambdas
@@ -451,66 +435,48 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # The partial order.
         P_t = (LCB > 0).any(axis=(2, 3))
 
-        # if detected_loops_in(P_t):
-        #     # TT: What should happen here?
-
         if self.C != []:
-            topK = P_t[self.C[1:K],self.C[:K-1]]
-            notInC = sorted(set(range(L))-set(self.C))
-            bottomK = P_t[notInC,self.C[K-1]]
-            if topK.any() or bottomK.any():
+            # aboveK = [P_t[C[i + 1], C[i]] for i in range(K - 1)].
+            aboveK = P_t[self.C[1:K], self.C[:(K - 1)]]
+            # belowK = [P_t[C[K + i], C_[K - 1]] for i in range (L - K)].
+            belowK = P_t[self.C[K:], self.C[K - 1]]
+
+            if aboveK.any() or belowK.any():
                 self.C = []
                 self.feedback_model.reset()
 
         if self.C == []:
             chain = self.get_chain_in(P_t)
+
             if chain != []:
                 self.C = chain
                 ranking[:K] = self.C[:K]
-                return ranking
-            else:
-                return self.shuffler.sample(ranking)
-        else:
-            topK = P_t[self.C[:K-1],self.C[1:K]]
-            notInC = sorted(set(range(L))-set(self.C))
-            bottomK = P_t[self.C[K-1],notInC]
-            if topK.all() and bottomK.all():
-                try:
-                    ranking[:K] = self.C
-                except ValueError:
-                    print "self.C =",self.C
-                    print "ranking =",ranking
-                    a = badvar
-                return ranking
-            else:
-                N = np.nonzero(topK)[0].tolist()+\
-                    (np.nonzero(bottomK)[0]+K).tolist()
-                k = self.random_state.choice(N)
-                if k<K-1:
-                    if self.random_state.rand() < 0.5:
-                        ranking[:K] = self.C
-                        return ranking
-                    else:
-                        ranking[:K] = self.C[:]
-                        ranking[k] = self.C[k+1]
-                        ranking[k+1] = self.C[k]
-                        return ranking
-                elif k>K-1:
-                    if self.random_state.rand() < 0.5:
-                        ranking[:K] = self.C
-                        ranking[K-2] = notInC[k-K]
-                        return ranking
-                    else:
-                        ranking[:K] = self.C[:]
-                        ranking[K-2] = self.C[K-1]
-                        ranking[K-1] = notInC[k-K]
-                        return ranking
-                else:
-                    print "(k,K) =",(k,K)
-                    print "N =",N
-                    print "(topK,bottomK) =", (topK,bottomK)
-                    raise ValueError,"Unexpected non-conforming index"
 
+            else:
+                self.shuffler.sample(ranking)
+
+        else:
+            # topK = [P_t[C[i], C[i + 1]] for i in range(K - 1)].
+            topK = P_t[self.C[:(K - 1)], self.C[1:K]]
+            # bottomK = [P_t[C[K - 1], C_[K + i]] for i in range (L - K)].
+            bottomK = P_t[self.C[K - 1], self.C[K:]]
+
+            ranking[:K] = self.C[:K]
+
+            if not (topK.all() and bottomK.all()):
+                N = np.r_[np.where(topK == 0)[0] + (K + np.where(bottomK)[0])]
+                k = self.random_state.choice(N)
+
+                if k < K - 1:
+                    if self.random_state.rand() < 0.5:
+                        ranking[k], ranking[k + 1] = self.C[k + 1], self.C[k]
+
+                elif k > K - 1:
+                    if self.random_state.rand() < 0.5:
+                        ranking[K - 2] = self.C[k]
+                    else:
+                        ranking[K - 2] = self.C[K - 1]
+                        ranking[K - 1] = self.C[k]
 
 
 class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
@@ -521,16 +487,16 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             self.t = 1
             self.alpha = kwargs['alpha']
             self.C = []
+            self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+                                                           dtype='float64'),
+                                                  random_state=self.random_state)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
-        self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
-                                                     dtype='float64'),
-                                            random_state=self.random_state)
 
         # Validate the type of the feedback model.
         if not isinstance(self.feedback_model,
-                          ClickLambdasAlgorithm.RefinedSkipClickLambdasAlgorithm):
-            raise ValueError('expected RefinedSkipClickLambdasAlgorithm for '
+                          ClickLambdasAlgorithm.SkipClickLambdasAlgorithm):
+            raise ValueError('expected SkipClickLambdasAlgorithm for '
                              'feedback_model but received %s'
                              % type(self.feedback_model))
 
@@ -539,8 +505,6 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         super(CoarseRelativeRankingAlgorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
-        parser.add_argument('-g', '--gamma', type=float, required = True,
-                            help='continuation probability lower bound')
 
     @classmethod
     def getName(cls):
@@ -634,7 +598,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # 'seen' by the click model.
 
         # Sanity check that the arrays are in order klij.
-        if Lambdas.shape == (K, K, L, L):
+        if Lambdas.shape != (L, L, K, K):
             raise ValueError('misordered dimension in lambdas and counts')
 
         # Lambda_ij is the same as Lambdas

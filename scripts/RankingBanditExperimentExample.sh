@@ -22,7 +22,7 @@ date
 # ============================================================================
 # RelativeRanking algorithm
 # ============================================================================
-python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret RelativeRankingAlgorithm -a 0.1 -g 0.0 -f RefinedSkipClickLambdasAlgorithm experiments/RelativeRankingAlgorithm_Horizon$1
+python2.7 ./RankingBanditExperiment.py -q all -m all -n $1 -w 45 -c 5 --regret RelativeRankingAlgorithm -a 0.1 -f RefinedSkipClickLambdasAlgorithm experiments/RelativeRankingAlgorithm_Horizon$1
 echo "Done with RR!"
 date
 
