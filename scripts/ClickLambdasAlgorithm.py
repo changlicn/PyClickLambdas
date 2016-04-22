@@ -85,6 +85,38 @@ class SkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
         return self.lambdas, self.counts
 
 
+class ObservedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents, cutoff):
+        super(SkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents), dtype='float64')
+        self.counts = np.empty((n_documents, n_documents), dtype='float64')
+        self.reset()
+
+    def update(self, ranking, clicks):
+        clicked_ranks = (clicks == 1).nonzero()[0][-1]
+
+        if len(clicked_ranks) == 0:
+            return
+
+        last_click_rank = clicked_ranks[-1]
+
+        for i in range(last_click_rank):
+            d_i = ranking[i]
+            for j in range(i + 1, last_click_rank + 1):
+                d_j = ranking[j]
+                if clicks[i] < clicks[j]:
+                    self.lambdas[d_j, d_i] += 1.0
+                self.counts[d_j, d_i] += 1.0
+
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
+
+    def statistics(self):
+        return self.lambdas, self.counts
+
+
 class RefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
 
     def __init__(self, n_documents, cutoff):
@@ -103,6 +135,93 @@ class RefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
                 if clicks[i] < clicks[j]:
                     self.lambdas[d_j, d_i, j, i] += 1.0
                 self.counts[d_j, d_i, j, i] += 1.0
+
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
+
+    def statistics(self):
+        return self.lambdas, self.counts
+
+
+class ObservedRefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents, cutoff):
+        super(RefinedSkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents, cutoff, cutoff),
+                                dtype='float64')
+        self.counts = np.empty((n_documents, n_documents, cutoff, cutoff),
+                               dtype='float64')
+        self.reset()
+
+    def update(self, ranking, clicks):
+        clicked_ranks = (clicks == 1).nonzero()[0][-1]
+
+        if len(clicked_ranks) == 0:
+            return
+
+        last_click_rank = clicked_ranks[-1]
+
+        for i in range(last_click_rank):
+            d_i = ranking[i]
+            for j in range(i + 1, last_click_rank + 1):
+                d_j = ranking[j]
+                if clicks[i] < clicks[j]:
+                    self.lambdas[d_j, d_i, j, i] += 1.0
+                self.counts[d_j, d_i, j, i] += 1.0
+
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
+
+    def statistics(self):
+        return self.lambdas, self.counts
+
+
+class PairedClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents, cutoff):
+        super(SkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents), dtype='float64')
+        self.counts = np.empty((n_documents, n_documents), dtype='float64')
+        self.reset()
+
+    def update(self, ranking, clicks):
+        for i in range(self.cutoff - 1):
+            d_i, d_j = ranking[i], ranking[i + 1]
+            if clicks[i] < clicks[i + 1]:
+                self.lambdas[d_i, d_j] += 1.0
+            self.counts[d_j, d_i] += 1.0
+
+    def reset(self):
+        self.lambdas.fill(1.0)
+        self.counts.fill(2.0)
+
+    def statistics(self):
+        return self.lambdas, self.counts
+
+
+class ObservedPairedClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
+
+    def __init__(self, n_documents, cutoff):
+        super(SkipClickLambdasAlgorithm, self).__init__(n_documents, cutoff)
+        self.lambdas = np.empty((n_documents, n_documents), dtype='float64')
+        self.counts = np.empty((n_documents, n_documents), dtype='float64')
+        self.reset()
+
+    def update(self, ranking, clicks):
+        clicked_ranks = (clicks == 1).nonzero()[0]
+
+        if len(clicked_ranks) == 0:
+            return
+
+        last_click_rank = clicked_ranks[-1]
+
+        for i in range(last_click_rank):
+            d_i, d_j = ranking[i], ranking[i + 1]
+            if clicks[i] < clicks[i + 1]:
+                self.lambdas[d_j, d_i] += 1.0
+            self.counts[d_j, d_i] += 1.0
 
     def reset(self):
         self.lambdas.fill(1.0)
