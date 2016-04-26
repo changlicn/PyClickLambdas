@@ -113,6 +113,7 @@ cdef class CascadeUCB1(object):
     cdef DOUBLE_t*          N
     cdef UCB_info_t*        U
     cdef readonly DOUBLE_t  alpha
+    cdef readonly bint      first_click
     cdef readonly UINT_t    rand_r_state
 
     property wins:
@@ -127,13 +128,14 @@ cdef class CascadeUCB1(object):
         def __get__(self):
             return self.wins / self.pulls
     
-    def __cinit__(self, INT_t L, DOUBLE_t alpha=1.5, object random_state=None):
+    def __cinit__(self, INT_t L, DOUBLE_t alpha=1.5, bint first_click=True, object random_state=None):
         self.L = L
         self.t = 0
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
         self.alpha = alpha
+        self.first_click = first_click
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
         else:
@@ -148,7 +150,7 @@ cdef class CascadeUCB1(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeUCB1, (self.L, self.alpha), self.__getstate__())
+        return (CascadeUCB1, (self.L, self.alpha, self.first_click), self.__getstate__())
 
     def __setstate__(self, d):
         self.t = d['t']
@@ -215,16 +217,21 @@ cdef class CascadeUCB1(object):
             The binary indicator array marking the ranks that received
             a click from the user.
         '''
-        cdef INT_t i
+        cdef INT_t i, last_i = clicks.size - 1
 
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
+
+        for i in range(clicks.size):
+            if clicks[i] == 1:
+                last_i = i
+                if self.first_click:
+                    break
         
         self.t += 1
-        for i in range(clicks.shape[0]):
+        for i in range(last_i + 1):
             self.S[ranking[i]] += clicks[i]
             self.N[ranking[i]] += 1.0
-            if clicks[i] == 1: break;
 
 
 cdef class CascadeKL_UCB(object):
@@ -233,6 +240,7 @@ cdef class CascadeKL_UCB(object):
     cdef DOUBLE_t*          S
     cdef DOUBLE_t*          N
     cdef UCB_info_t*        U
+    cdef readonly bint      first_click
     cdef readonly UINT_t    rand_r_state
 
     property wins:
@@ -247,12 +255,13 @@ cdef class CascadeKL_UCB(object):
         def __get__(self):
             return self.wins / self.pulls
     
-    def __cinit__(self, INT_t L, object random_state=None):
+    def __cinit__(self, INT_t L, first_click=True, object random_state=None):
         self.L = L
         self.t = 0
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
+        self.first_click = first_click
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
         else:
@@ -267,7 +276,7 @@ cdef class CascadeKL_UCB(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeKL_UCB, (self.L,), self.__getstate__())
+        return (CascadeKL_UCB, (self.L, self.first_click), self.__getstate__())
 
     def __setstate__(self, d):
         self.t = d['t']
@@ -381,16 +390,21 @@ cdef class CascadeKL_UCB(object):
             The binary indicator array marking the ranks that received
             a click from the user.
         '''
-        cdef INT_t i
+        cdef INT_t i, last_i = clicks.size - 1
 
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
+
+        for i in range(clicks.size):
+            if clicks[i] == 1:
+                last_i = i
+                if self.first_click:
+                    break
         
         self.t += 1
-        for i in range(clicks.shape[0]):
+        for i in range(last_i + 1):
             self.S[ranking[i]] += clicks[i]
             self.N[ranking[i]] += 1.0
-            if clicks[i] == 1: break;
 
 
 cdef class CascadeLambdaMachine(object):
