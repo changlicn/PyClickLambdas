@@ -65,12 +65,19 @@ class RankingBanditExperiment(object):
             # Get a ranking based on the current state of the model...
             self.ranking_model.get_ranking(ranking=ranking)
 
+            # print t, ranking
+
             # get user clicks on that ranking...
             clicks = self.click_model.get_clicks(ranking[:self.cutoff],
                                                  identity)
 
             # ... and allow the model to learn from them.
             self.ranking_model.set_feedback(ranking, clicks)
+
+        # print 'final ranking:', ranking
+        # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff)
+
+        self.ranking_model.cleanup()
 
         info = {}
         info['query'] = self.query
@@ -96,6 +103,8 @@ class RankingBanditExperiment(object):
             evaluator = ClickthroughRateRegretEvaluator(self.click_model)
 
             regret = evaluator.evaluate(info, rankings)
+
+            # print 'regret:', regret.cumsum()
 
             # Save the regret beside rankings.
             np.save(self.get_output_filepath(suffix='regret'), regret)
@@ -138,6 +147,7 @@ def parse_command_line_arguments(MQD):
     parser.add_argument('-n', '--n-impressions', type=int, default=1, help='number of impressions')
     parser.add_argument('-c', '--cutoff', type=int, default=10, help='impressions will consist of only this number of documents')
     parser.add_argument('-w', '--n-workers', type=int, default=1, help='number of worker threads')
+    parser.add_argument('-s', '--seed', type=int, default=42, help='seed for initialization of random number generators')
     parser.add_argument("output", help="output directory")
 
     return vars(parser.parse_args())
@@ -145,7 +155,7 @@ def parse_command_line_arguments(MQD):
 
 def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
                         click_model_names, queries, n_impressions,
-                        cutoff, compute_regret, outputdir):
+                        cutoff, compute_regret, seed, outputdir):
     '''
     Method that prepares experiments.
     '''
@@ -160,7 +170,7 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             ranking_model_args['relevances'] = relevances
             ranking_model_args['n_documents'] = n_documents
-            ranking_model_args['random_state'] = np.random.RandomState(42)
+            ranking_model_args['random_state'] = np.random.RandomState(seed)
 
             ranking_model = getattr(RankingBanditAlgorithm, ranking_model_name)(**ranking_model_args)
 
@@ -221,6 +231,9 @@ if __name__ == '__main__':
     # the verbosity level ...
     verbose = kwargs.pop('verbose')
 
+    # seed for random number generator ...
+    seed = kwargs.pop('seed')
+
     # and, finally, the output directory.
     outputdir = kwargs.pop('output')
     # ===============================================================
@@ -232,7 +245,7 @@ if __name__ == '__main__':
     # Prepare experiments based on the parsed parameters...
     experiments = prepare_experiments(MQD, ranking_model_name, kwargs,
                                       click_model_names, queries, n_impressions,
-                                      cutoff, compute_regret, outputdir)
+                                      cutoff, compute_regret, seed, outputdir)
 
     # and run them, conveniently, in parallel loops.
     Parallel(n_jobs=n_jobs, verbose=verbose)(
