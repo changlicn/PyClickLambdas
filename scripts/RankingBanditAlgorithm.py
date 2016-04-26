@@ -84,6 +84,13 @@ class BaseRankingBanditAlgorithm(object):
         '''
         pass
 
+    def cleanup(self):
+        '''
+        This method is called right after the experiment before the ranking
+        model is saved with the results.
+        '''
+        pass
+
 
 class BaseLambdasRankingBanditAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
@@ -810,3 +817,193 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                     else:
                         ranking[K - 2] = self.C[K - 1]
                         ranking[K - 1] = self.C[k]
+
+
+class RankingBanditsGangAlgorithm(BaseRankingBanditAlgorithm):
+
+    def __init__(self, *args, **kwargs):
+        super(RankingBanditsGangAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            method = kwargs['method']
+            if method == 'UCB':
+                self.rankers = [CascadeUCB1(self.n_documents, kwargs['alpha'],
+                                            first_click=kwargs['first_click'],
+                                            random_state=self.random_state)
+                                for _ in xrange(self.cutoff)]
+            elif method == 'KL-UCB':
+                self.rankers = [CascadeKL_UCB(self.n_documents, 
+                                              first_click=kwargs['first_click'],
+                                              random_state=self.random_state)
+                                for _ in xrange(self.cutoff)]
+            else:
+                raise ValueError('unknown ranking method: %s' % method)
+
+            # Array used for random shuffling of the bandits.
+            self.indices = np.arange(self.cutoff, dtype='int32')
+
+            # Auxiliary array for bandit rankings.
+            self.__tmp_rankings = np.empty((self.cutoff, self.n_documents),
+                                           dtype='int32')
+
+            # The position of documents within each bandits
+            # recommendation list.
+            self.__tmp_indices = np.empty(self.cutoff, dtype='int32')
+
+            # Feedback for the bandits derived from clicks.
+            self.__tmp_feedback = np.zeros(self.cutoff, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RankingBanditsGangAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-m', '--method', choices=['UCB', 'KL-UCB'],
+                            required=True, help='specify bandit algorithm')
+        parser.add_argument('-a', '--alpha', type=float, default=1.5,
+                            required=False, help='alpha parameter for UCB '
+                            '(used only if "--method UCB" is specified)')
+        parser.add_argument('-f', '--first-click', action='store_true',
+                            required=False, help='consider feedback up to '
+                            'the last click instead of the first (default)')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RankingBanditsGangAlgorithm'
+
+    def get_ranking(self, ranking):
+        '''
+        This method combines rankings proposed by each ranking bandit.
+        The bandits are ordered randomly and a document not yet appearing 
+        in the output ranking is picked from each.
+        '''
+        # Shuffle the bandits randomly...
+        self.random_state.shuffle(self.indices)
+        # ... and in that order ...
+        for k, i in enumerate(self.indices):
+            # ... let each bandit yield a document ...
+            for j, d in enumerate(self.rankers[i].get_ranking(self.__tmp_rankings[i])):
+                # ...  that has not appeared in the output ranking yet.
+                if d not in ranking[:k]:
+                    ranking[k] = d
+                    self.__tmp_indices[i] = j
+                    break
+
+    def set_feedback(self, ranking, clicks):
+        for i, c in zip(self.indices, clicks):
+            j = self.__tmp_indices[i]
+            self.__tmp_feedback[j] = c
+            self.rankers[i].set_feedback(self.__tmp_rankings[i],
+                                         self.__tmp_feedback[:(j + 1)])
+            self.__tmp_feedback[j] = 0
+
+    def cleanup(self):
+        print 'RankingBanditsGangAlgorithm.cleanup:'
+        print self.__tmp_rankings
+
+
+class StackedRankingBanditsAlgorithm(BaseRankingBanditAlgorithm):
+
+    def __init__(self, *args, **kwargs):
+        super(StackedRankingBanditsAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            method = kwargs['method']
+            if method == 'UCB':
+                self.rankers = [CascadeUCB1(self.n_documents, kwargs['alpha'],
+                                            first_click=kwargs['first_click'],
+                                            random_state=self.random_state)
+                                for _ in xrange(self.cutoff)]
+                self.preranker = CascadeUCB1(self.cutoff, kwargs['alpha'],
+                                             first_click=kwargs['first_click'],
+                                             random_state=self.random_state)
+            elif method == 'KL-UCB':
+                self.rankers = [CascadeKL_UCB(self.n_documents,
+                                              first_click=kwargs['first_click'],
+                                              random_state=self.random_state)
+                                for _ in xrange(self.cutoff)]
+                self.preranker = CascadeKL_UCB(self.cutoff,
+                                               first_click=kwargs['first_click'],
+                                               random_state=self.random_state)
+            else:
+                raise ValueError('unknown ranking method: %s' % method)
+
+            self.first_click_feedback = kwargs['first_click']
+
+            # Array used for random shuffling of the bandits.
+            self.indices = np.arange(self.cutoff, dtype='int32')
+
+            # Auxiliary array for bandit rankings.
+            self.__tmp_rankings = np.empty((self.cutoff, self.n_documents),
+                                           dtype='int32')
+
+            # The position of documents within each bandits
+            # recommendation list.
+            self.__tmp_indices = np.empty(self.cutoff, dtype='int32')
+
+            # Feedback for the bandits derived from clicks.
+            self.__tmp_feedback = np.zeros(self.cutoff, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(StackedRankingBanditsAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-m', '--method', choices=['UCB', 'KL-UCB'],
+                            required=True, help='specify bandit algorithm')
+        parser.add_argument('-a', '--alpha', type=float, default=1.5,
+                            required=False, help='alpha parameter for UCB '
+                            '(used only if "--method UCB" is specified)')
+        parser.add_argument('-f', '--first-click', action='store_true',
+                            required=False, help='consider feedback up to '
+                            'the last click instead of the first (default)')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'StackedRankingBanditsAlgorithm'
+
+    def get_ranking(self, ranking):
+        '''
+        This method combines rankings proposed by each ranking bandit.
+        The bandits are ordered randomly and a document not yet appearing 
+        in the output ranking is picked from each.
+        '''
+        # Shuffle the bandits randomly...
+        self.preranker.get_ranking(self.indices)
+
+        # ... and in that order ...
+        for k, i in enumerate(self.indices):
+            # ... let each bandit yield a document ...
+            for j, d in enumerate(self.rankers[i].get_ranking(self.__tmp_rankings[i])):
+                # ...  that has not appeared in the output ranking yet.
+                if d not in ranking[:k]:
+                    ranking[k] = d
+                    self.__tmp_indices[i] = j
+                    break
+
+    def set_feedback(self, ranking, clicks):
+        self.preranker.set_feedback(self.indices, clicks)
+
+        clicks_cutoff = clicks.shape[0]
+
+        if not self.first_click_feedback:
+            clicked_ranks = clicks.nonzero()[0]
+            if len(clicked_ranks) > 0:
+                clicks_cutoff = clicked_ranks[-1] + 1
+
+        for i, c in zip(self.indices, clicks[:clicks_cutoff]):
+            j = self.__tmp_indices[i]
+            self.__tmp_feedback[j] = c
+            self.rankers[i].set_feedback(self.__tmp_rankings[i],
+                                         self.__tmp_feedback[:(j + 1)])
+            self.__tmp_feedback[j] = 0
+
+    # def cleanup(self):
+    #     print 'RankingBanditsGangAlgorithm.cleanup:'
+    #     print self.__tmp_rankings
