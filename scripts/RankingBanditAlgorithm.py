@@ -316,9 +316,11 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             self.N_exp = 100
             self.T_exp = self.N_exp * (self.n_documents*self.cutoff) ** 2
             self.C = []
-            self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
-                                                           dtype='float64'),
-                                                  random_state=self.random_state)
+            # self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+            #                                                dtype='float64'),
+            #                                       random_state=self.random_state)
+            self.shuffler = CascadeKL_UCB(self.n_documents, first_click=False,
+                                          random_state=self.random_state)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -359,31 +361,12 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         if Lambdas.shape != (L, L, K, K):
             raise ValueError('misordered dimension in lambdas and counts')
 
-
         if self.t < self.T_exp:
-            self.shuffler.sample(ranking)
+            # self.shuffler.sample(ranking)
+            self.shuffler.get_ranking(ranking)
         elif self.t == self.T_exp:
-            # Lambda_ij is the same as Lambdas
-            Lambda_ij = Lambdas
-
-            # Lambda_ji is the transpose of Lambda_ij. This operation
-            # is very cheap in NumPy >= 1.10 because only a view needs
-            # to be created.
-            Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
-
-            # N_ij is the same as N.
-            N_ij = N
-
-            # N_ji is the transpose of N_ij. Similarly to construction
-            # of Lambda_ji this can turn out to be very cheap.
-            N_ji = np.swapaxes(N_ij, 0, 1)
-
-            # P is the frequentist mean.
-            P = Lambda_ij / N_ij - Lambda_ji / N_ji
-
-            self.C = P.sum(axis=(1,2,3)).argsort()
+            self.C = self.shuffler.get_ranking()
             ranking[:K] = self.C[:K]
-            self.feedback_model.reset()
         else:
             # Lambda_ij is the same as Lambdas
             Lambda_ij = Lambdas
@@ -462,6 +445,10 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                         ranking[K - 2] = self.C[K - 1]
                         ranking[K - 1] = self.C[k]
 
+    def set_feedback(self, ranking, clicks):
+        if self.t < self.T_exp:
+            self.shuffler.set_feedback(ranking, clicks)
+        super(RelativeRankingAlgorithm, self).set_feedback(ranking, clicks)
 
 
 class RelativeRankingAlgorithmV1_TooSlow(BaseLambdasRankingBanditAlgorithm):
