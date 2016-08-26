@@ -61,11 +61,11 @@ if __name__ == '__main__':
     click_models = ['CM', 'PBM', 'DCM', 'DBN', 'CCM', 'UBM']
 
     # The cutoff rank - the maximum number of 'visible' documents.
-    cutoff = 5
+    cutoff = 3
 
     start = timer()
 
-    compute_preferences(MQD, click_models, cutoff, './data/model_query_preferences_c5.pkl')
+    compute_preferences(MQD, click_models, cutoff, './data/model_query_preferences_c%d.pkl' % cutoff)
 
     end = timer()
 

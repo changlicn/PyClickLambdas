@@ -106,6 +106,114 @@ cdef inline DOUBLE_t logsumexp(DOUBLE_t *a, INT_t sz) nogil:
     return amax + log(sumexp)
 
 
+cdef class RelativeUCB1(object):
+    cdef readonly INT_t     L
+    cdef readonly INT_t     t
+    cdef DOUBLE_t*          S
+    cdef DOUBLE_t*          N
+    cdef UCB_info_t*        U
+    cdef readonly DOUBLE_t  alpha
+    cdef readonly UINT_t    rand_r_state
+
+    property wins:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.S)
+    
+    property pulls:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.N)
+
+    property means:
+        def __get__(self):
+            return self.wins / self.pulls
+    
+    def __cinit__(self, INT_t L, DOUBLE_t alpha=0.51, object random_state=None):
+        cdef INT_t i
+        self.L = L
+        self.t = 0
+        self.S = <DOUBLE_t*> malloc(L * sizeof(DOUBLE_t))
+        self.N = <DOUBLE_t*> malloc(L * sizeof(DOUBLE_t))
+        # Set the 'prior' estimate of reward for each arm.
+        for i in range(L):
+            self.S[i] = 0.5
+            self.N[i] = 1
+        self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
+        self.alpha = alpha
+        if random_state is None:
+            self.rand_r_state = np.random.randint(1, RAND_R_MAX)
+        else:
+            self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+    
+    def __dealloc__(self):
+        free(self.S)
+        free(self.N)
+        free(self.U)
+
+    def __reduce__(self):
+        ''' 
+        Reduce reimplementation, for pickling.
+        '''
+        return (RelativeUCB1, (self.L, self.alpha), self.__getstate__())
+
+    def __setstate__(self, d):
+        self.t = d['t']
+        memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
+        memcpy(self.N, (<np.ndarray> d['N']).data, self.L * sizeof(DOUBLE_t))
+        self.rand_r_state = d['rand_r_state']
+
+    def __getstate__(self):
+        d = {}
+        d['t'] = self.t
+        d['S'] = __wrap_in_1d_double(self, self.L, self.S)
+        d['N'] = __wrap_in_1d_double(self, self.L, self.N)
+        d['rand_r_state'] = self.rand_r_state
+        return d
+
+    def get_arms(self, np.ndarray[INT_t, ndim=1] arms):
+        ''' 
+        Get a list of arms sorted by current reward estimates.
+
+        Parameters
+        ----------
+        arms : array of ints, shape = [self.L], optional
+            Optional output array, which can speed up the computation
+            because no temporary arrays are created during the call.
+        '''
+        cdef INT_t index
+        cdef np.ndarray[INT_t, ndim=1] indices = np.empty(self.L, dtype=INT) if arms is None else arms
+
+        if indices.size != self.L:
+            raise ValueError('ranking array must be 1-d integer array of size %d' % self.L)
+
+        for index in range(self.L):
+            self.U[index].ucb = self.S[index] / self.N[index] + sqrt(self.alpha * log(self.t) / self.N[index])
+            self.U[index].nonce = rand_r(&self.rand_r_state)
+            self.U[index].index = index
+
+        qsort(self.U, self.L, sizeof(UCB_info_t), ucb_info_compare)
+
+        for index in range(self.L):
+            indices[index] = self.U[index].index
+
+        return indices
+
+    def set_feedback(self, INT_t arm, INT_t reward):
+        ''' 
+        Update the mean reward rate estimate for the given arm.
+
+        Parameters
+        ----------
+        arm : int
+            The index of an arm.
+
+        reward : int
+            The reward, either 0 or 1.
+        '''        
+        self.S[arm] += reward
+        self.N[arm] += 1.0
+        self.t += 1
+
+
 cdef class CascadeUCB1(object):
     cdef readonly INT_t     L
     cdef readonly INT_t     t
@@ -206,12 +314,12 @@ cdef class CascadeUCB1(object):
     def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
-        from a preceding call to `self.advance` method.
+        from a preceding call to `self.get_ranking` method.
 
         Parameters
         ----------
         ranking : array of ints
-            The ranking produced by a preceding call to `self.advance`.
+            The ranking produced by a preceding call to `self.get_ranking`.
 
         clicks : array of ints
             The binary indicator array marking the ranks that received
@@ -379,12 +487,12 @@ cdef class CascadeKL_UCB(object):
     def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
-        from a preceding call to `self.advance` method.
+        from a preceding call to `self.get_ranking` method.
 
         Parameters
         ----------
         ranking : array of ints
-            The ranking produced by a preceding call to `self.advance`.
+            The ranking produced by a preceding call to `self.get_ranking`.
 
         clicks : array of ints
             The binary indicator array marking the ranks that received
@@ -493,12 +601,12 @@ cdef class CascadeLambdaMachine(object):
     def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
-        from a preceding call to `self.advance` method.
+        from a preceding call to `self.get_ranking` method.
 
         Parameters
         ----------
         ranking : array of ints
-            The ranking produced by a preceding call to `self.advance`.
+            The ranking produced by a preceding call to `self.get_ranking`.
 
         clicks : array of ints
             The binary indicator array marking the ranks that received
@@ -640,12 +748,12 @@ cdef class CascadeThompsonSampler(object):
     def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
-        from a preceding call to `self.advance` method.
+        from a preceding call to `self.get_ranking` method.
 
         Parameters
         ----------
         ranking : array of ints
-            The ranking produced by a preceding call to `self.advance`.
+            The ranking produced by a preceding call to `self.get_ranking`.
 
         clicks : array of ints
             The binary indicator array marking the ranks that received
@@ -760,12 +868,12 @@ cdef class CascadeExp3(object):
     def set_feedback(self, np.ndarray[INT_t, ndim=1] ranking, np.ndarray[INT_t, ndim=1] clicks):
         ''' 
         Update model parameters based on clicks. The ranking is assumed coming
-        from a preceding call to `self.advance` method.
+        from a preceding call to `self.get_ranking` method.
 
         Parameters
         ----------
         ranking : array of ints
-            The ranking produced by a preceding call to `self.advance`.
+            The ranking produced by a preceding call to `self.get_ranking`.
 
         clicks : array of ints
             The binary indicator array marking the ranks that received

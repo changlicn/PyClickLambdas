@@ -136,7 +136,7 @@ class RefinedSkipClickLambdasAlgorithm(BaseClickLambdasAlgorithm):
                     self.lambdas[d_j, d_i, j, i] += 1.0
                 self.counts[d_j, d_i, j, i] += 1.0
 
-    def reset(self):
+    def reset(self):        
         self.lambdas.fill(1.0)
         self.counts.fill(2.0)
 

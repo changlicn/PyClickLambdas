@@ -9,6 +9,7 @@ import ClickLambdasAlgorithm
 from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
 
+from rankbs import RelativeUCB1
 from rankbs import CascadeUCB1
 from rankbs import CascadeKL_UCB
 from rankbs import CascadeLambdaMachine
@@ -306,21 +307,102 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         self.ranker.set_feedback(ranking, clicks)
 
 
+class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(RelativeCascadeUCB1Algorithm, self).__init__(*args, **kwargs)
+        try:
+            # The ranker at the top rank uses all documents...
+            self.top_ranker = RelativeUCB1(self.n_documents, alpha=kwargs['alpha'],
+                                           random_state=self.random_state)
+
+            # ... while the rankers at the lower ranks uses 1 less,
+            # since they are relative.
+            self.rankers = [RelativeUCB1(self.n_documents - 1, alpha=kwargs['alpha'],
+                                         random_state=self.random_state)
+                            for _ in range(self.n_documents)]
+            
+            self.__tmp_rankings = np.empty(self.n_documents - 1, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RelativeCascadeUCB1Algorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=0.51,
+                            required=True, help='alpha parameter')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RelativeCascadeUCB1Algorithm'
+
+    def get_ranking(self, ranking):
+        # Sample a document at the highest rank...
+        self.top_ranker.get_arms(ranking) 
+        # ... and for each subsequent rank ...
+        for r in range(1, self.cutoff):
+            # ... pick the ranker associated with the document above ...
+            ranker = self.rankers[ranking[r - 1]]
+            # ... get the relative ranking of the other documents ...
+            ranker.get_arms(self.__tmp_rankings)
+            # ... adjust the indices because `d` never appears in `__tmp_rankings` ...
+            self.__tmp_rankings += (self.__tmp_rankings >= ranking[r - 1])
+            # ... and finally pick a document that has not appeared yet.
+            for d in self.__tmp_rankings:        
+                if d not in ranking[:r]:
+                    ranking[r] = d
+                    break
+
+    def set_feedback(self, ranking, clicks):
+        self.top_ranker.set_feedback(ranking[0], clicks[0])
+        prev_d = ranking[0]
+
+        clicked_ranks = clicks.nonzero()[0]
+        
+        if len(clicked_ranks) > 0:
+            cutoff = clicked_ranks[-1] + 1
+        else:
+            cutoff = self.cutoff
+
+        for curr_d, c in zip(ranking[1:cutoff], clicks[1:cutoff]):
+            # Pick the ranker associated with the document ranked above
+            # and update it according to the click feedback.
+            self.rankers[prev_d].set_feedback(curr_d - (curr_d > prev_d), c)
+            prev_d = curr_d
+
+
 class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
 
     def __init__(self, *args, **kwargs):
         super(RelativeRankingAlgorithm, self).__init__(*args, **kwargs)
         try:
-            self.t = 1
-            self.alpha = kwargs['alpha']
-            self.N_exp = 100
-            self.T_exp = self.N_exp * (self.n_documents*self.cutoff) ** 2
             self.C = []
-            # self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
-            #                                                dtype='float64'),
-            #                                       random_state=self.random_state)
-            self.shuffler = CascadeKL_UCB(self.n_documents, first_click=False,
-                                          random_state=self.random_state)
+            self.t = 0
+            self.t_explore = kwargs['explore']
+            self.alpha = kwargs['alpha']
+            self.uniform = (kwargs['method'] == 'uniform')
+            
+            if kwargs['method'] == 'uniform':
+                self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+                                                               dtype='float64'),
+                                                      random_state=self.random_state)
+
+            elif kwargs['method'] == 'ucb':
+                self.shuffler = CascadeUCB1(self.n_documents, alpha=self.alpha,
+                                            first_click=kwargs['first_click'],
+                                            random_state=self.random_state)
+
+            elif kwargs['method'] == 'kl-ucb':
+                self.shuffler = CascadeKL_UCB(self.n_documents,
+                                              first_click=kwargs['first_click'],
+                                              random_state=self.random_state)
+            else:
+                raise ValueError('unrecognized value for \'method\' option: %s'
+                                 % kwargs['method'])
+
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -334,8 +416,18 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
     @classmethod
     def update_parser(cls, parser):
         super(RelativeRankingAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-m', '--method', choices=['uniform', 'ucb', 'kl-ucb'],
+                            required=True, help='specify bandit algorithm used '
+                           'for ranking preselection')
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
-                            required=True, help='alpha parameter')
+                            required=False, help='alpha parameter')
+        parser.add_argument('-e', '--explore', type=int, default=10000, help='the number '
+                            'of time steps allocated for initial exploration')
+        parser.add_argument('-c', '--first-click', action='store_true',
+                            required=False, help='consider feedback only up to '
+                            'the first click instead of the whole list (relevant '
+                            ' only when `ucb` or `kl-ucb` is used for ranking '
+                            'preselection)')
 
     @classmethod
     def getName(cls):
@@ -358,15 +450,32 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         self.t += 1
 
         # Sanity check that the arrays are in order ijkl.
-        if Lambdas.shape != (L, L, K, K):
-            raise ValueError('misordered dimension in lambdas and counts')
+#         if Lambdas.shape != (L, L, K, K):
+#             raise ValueError('misordered dimension in lambdas and counts')
 
-        if self.t < self.T_exp:
-            # self.shuffler.sample(ranking)
-            self.shuffler.get_ranking(ranking)
-        elif self.t == self.T_exp:
-            self.C = self.shuffler.get_ranking()
+        if self.t < self.t_explore:
+            if self.uniform:
+                self.shuffler.sample(ranking)
+            else:
+                self.shuffler.get_ranking(ranking)
+        elif self.t == self.t_explore:
+            if self.uniform:
+                Lambda_ij = Lambdas
+                Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+                N_ij = N
+                N_ji = np.swapaxes(N_ij, 0, 1)
+    
+                P = Lambda_ij / N_ij - Lambda_ji / N_ji
+    
+                self.C = np.argsort(P.sum(axis=(1, 2, 3)))[::-1]
+            else:
+                self.C = self.shuffler.get_ranking()
+
             ranking[:K] = self.C[:K]
+            self.feedback_model.reset()
+            
+#             print 'exploration ranking:', self.C[:K]
         else:
             # Lambda_ij is the same as Lambdas
             Lambda_ij = Lambdas
@@ -387,8 +496,8 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             P = Lambda_ij / N_ij - Lambda_ji / N_ji
 
             # C is the size of the confidence interval
-            C = (np.sqrt(self.alpha * np.log(self.t + 1) / N_ij) + 
-                 np.sqrt(self.alpha * np.log(self.t + 1) / N_ji))
+            C = (np.sqrt(self.alpha * np.log(self.t) / N_ij) + 
+                 np.sqrt(self.alpha * np.log(self.t) / N_ji))
 
             # Get LCB.
             LCB = P - C
@@ -396,59 +505,276 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
             # The partial order.
             P_t = (LCB > 0).any(axis=(2, 3))
 
-            # topKI = [P_t[C[i + 1], C[i]] for i in range(K - 1)].
-            topKI = P_t[self.C[1:K], self.C[:(K - 1)]]
-            # bottomKI = [P_t[C_[K + i], C[K - 1]] for i in range (L - K)].
-            bottomKI = P_t[self.C[K:], self.C[K - 1]]
+            # Indices of incorrectly ordered pairs of documents in C.
+            I = np.flatnonzero(np.r_[P_t[self.C[1:K], self.C[:(K - 1)]],
+                                     P_t[self.C[K:], self.C[K - 1]]])
 
-            I = np.r_[np.where(topKI)[0], (K + np.where(bottomKI)[0])]
-            if topKI.any() or bottomKI.any():
+            if len(I) > 0:
+################
+                print 'Incorrectly ordered:', I, 'ranking:', self.C[:K], 'time:', self.t
                 k = I.min()
-
-                if k < K - 1:
-                    tempC = np.array(self.C, dtype='int32')
-                    tempC[k], tempC[k+1] = self.C[k+1], self.C[k]
-                    self.C = np.array(tempC, dtype='int32')
-                    self.feedback_model.lambdas[:,:,k:,k:] = 1.
-                    self.feedback_model.counts[:,:,k:,k:] = 2.
-                    Lambdas, N = self.feedback_model.statistics()
-                    if (Lambdas[:,:,k:,k:] != 1.).any():
-                        print "Lambdas[:,:,k:,k:] ="
-                        print Lambdas[:,:,k:,k:]
-                        raise ValueError, 'It seems like the reset did not take effect: the above matrix should be all 1s!'
                 
-                elif k > K - 1:
-                    tempC = np.array(self.C, dtype='int32')
-                    tempC[K-1], tempC[k] = self.C[k], self.C[K-1]
-                    self.C = np.array(tempC, dtype='int32')
+                if k < K - 1:
+                    self.C[k], self.C[k + 1] = self.C[k + 1], self.C[k]
 
-
-            # topKN = [P_t[C[i], C[i + 1]] for i in range(K - 1)].
-            topKN = P_t[self.C[:(K - 1)], self.C[1:K]]
-            # bottomKN = [P_t[C[K - 1], C_[K + i]] for i in range (L - K)].
-            bottomKN = P_t[self.C[K - 1], self.C[K:]]
+                    self.feedback_model.lambdas[:, :, k:, k:] = 1
+                    self.feedback_model.counts[:, :, k:, k:] = 2
+                    # Sanity check that the feedback model statistics have changed.
+                    if (self.feedback_model.statistics()[0][:, :, k:, k:] != 1).any():
+                        raise ValueError, 'Feedback model has not changed as was expected!!!'
+                
+                else:
+                    self.C[K - 1], self.C[k + 1] = self.C[k + 1], self.C[K - 1]
 
             ranking[:K] = self.C[:K]
+            
+############
+            if self.t % 20000 == 0:
+                print 'Non-conforming:', np.flatnonzero(~np.r_[P_t[self.C[:(K - 1)], self.C[1:K]],
+                                                               P_t[self.C[K - 1], self.C[K:]]]),\
+                       'ranking:', self.C[:K],'time:', self.t
+              
+            # Indicator of non-conforming pairwise orderings in C, above cutoff.
+            N = np.flatnonzero(~np.r_[P_t[self.C[:(K - 1)], self.C[1:K]]])
 
-            if not (topKN.all() and bottomKN.all()):
-                N = np.r_[np.where(~topKN)[0], (K + np.where(~bottomKN)[0])]
-                k = self.random_state.choice(N)
+            if len(N) > 0:                    
+                prev_swapped_k = -1
+                for k in N:
+                    if k != prev_swapped_k:
+                        if (self.feedback_model.counts[self.C[k], self.C[k + 1], k + 1, k] <
+                            self.feedback_model.counts[self.C[k + 1], self.C[k], k + 1, k]):
+                            ranking[k] = self.C[k + 1]
+                            ranking[k + 1] = self.C[k]
+                            prev_swapped_k = k + 1
+                            
+            # Indicator of non-conforming pairwise orderings in C, below cutoff.
+            M = K + np.flatnonzero(~np.r_[P_t[self.C[K - 1], self.C[K:]]])
 
-                if k < K - 1:
-                    if self.random_state.rand() < 0.5:
-                        ranking[k], ranking[k + 1] = self.C[k + 1], self.C[k]
-
-                elif k > K - 1:
+            if len(M) > 0:
+                if self.random_state.rand() < 0.5:
+                    k = self.random_state.choice(M)
                     if self.random_state.rand() < 0.5:
                         ranking[K - 2] = self.C[k]
+                        ranking[K - 1] = self.C[K - 1]
                     else:
                         ranking[K - 2] = self.C[K - 1]
                         ranking[K - 1] = self.C[k]
+            
+            # Choose a pair at random and propagate it to the top.
+            k = self.random_state.choice(K - 1)
+            
+            if k > 0:
+                d, e = ranking[k], ranking[k + 1]
+                ranking[2:k + 2] = ranking[0:k]
+                ranking[0], ranking[1] = d, e
+            
+#             # Indicator of non-conforming pairwise orderings in C, above cutoff.
+#             N = np.flatnonzero(~np.r_[P_t[self.C[:(K - 1)], self.C[1:K]]])
+                        
+#             if len(N) > 0:
+#                 prev_swapped_k = -1
+#                 for k in N:
+#                     if k != prev_swapped_k:
+#                         if (self.feedback_model.counts[self.C[k], self.C[k + 1], k + 1, k] <
+#                             self.feedback_model.counts[self.C[k + 1], self.C[k], k + 1, k]):
+#                             ranking[k] = self.C[k + 1]
+#                             ranking[k + 1] = self.C[k]
+#                             prev_swapped_k = k + 1
+                            
+#             # Indicator of non-conforming pairwise orderings in C, below cutoff.
+#             M = K + np.flatnonzero(~np.r_[P_t[self.C[K - 1], self.C[K:]]])
+
+#             if len(M) > 0:
+#                 if self.random_state.rand() < 0.5:
+#                     k = self.random_state.choice(M)
+
+#                     if self.random_state.rand() < 0.5:
+#                         ranking[K - 2] = self.C[k]
+#                         ranking[K - 1] = self.C[K - 1]
+#                     else:
+#                         ranking[K - 2] = self.C[K - 1]
+#                         ranking[K - 1] = self.C[k]
 
     def set_feedback(self, ranking, clicks):
-        if self.t < self.T_exp:
-            self.shuffler.set_feedback(ranking, clicks)
+        if self.t < self.t_explore:
+            if not self.uniform:
+                self.shuffler.set_feedback(ranking, clicks)
         super(RelativeRankingAlgorithm, self).set_feedback(ranking, clicks)
+        
+
+# class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
+
+#     def __init__(self, *args, **kwargs):
+#         super(RelativeRankingAlgorithm, self).__init__(*args, **kwargs)
+#         try:
+#             self.C = []
+#             self.t = 0
+#             self.t_explore = kwargs['explore']
+#             self.alpha = kwargs['alpha']
+#             self.uniform = (kwargs['method'] == 'uniform')
+            
+#             if kwargs['method'] == 'uniform':
+#                 self.shuffler = UniformRankingSampler(np.empty(self.n_documents,
+#                                                                dtype='float64'),
+#                                                       random_state=self.random_state)
+
+#             elif kwargs['method'] == 'ucb':
+#                 self.shuffler = CascadeUCB1(self.n_documents, alpha=self.alpha,
+#                                             first_click=kwargs['first_click'],
+#                                             random_state=self.random_state)
+
+#             elif kwargs['method'] == 'kl-ucb':
+#                 self.shuffler = CascadeKL_UCB(self.n_documents, alpha=self.alpha,
+#                                               first_click=kwargs['first_click'],
+#                                               random_state=self.random_state)
+#             else:
+#                 raise ValueError('unrecognized value for \'method\' option: %s'
+#                                  % kwargs['method'])
+
+#         except KeyError as e:
+#             raise ValueError('missing %s argument' % e)
+
+#         # Validate the type of the feedback model.
+#         if not isinstance(self.feedback_model,
+#                           ClickLambdasAlgorithm.RefinedSkipClickLambdasAlgorithm):
+#             raise ValueError('expected RefinedSkipClickLambdasAlgorithm for '
+#                              'feedback_model but received %s'
+#                              % type(self.feedback_model).__name__)
+
+#     @classmethod
+#     def update_parser(cls, parser):
+#         super(RelativeRankingAlgorithm, cls).update_parser(parser)
+#         parser.add_argument('-m', '--method', choices=['uniform', 'ucb', 'kl-ucb'],
+#                             required=True, help='specify bandit algorithm used '
+#                            'for ranking preselection')
+#         parser.add_argument('-a', '--alpha', type=float, default=0.51,
+#                             required=False, help='alpha parameter')
+#         parser.add_argument('-e', '--explore', type=int, default=10000, help='the number '
+#                             'of time steps allocated for initial exploration')
+#         parser.add_argument('-c', '--first-click', action='store_true',
+#                             required=False, help='consider feedback only up to '
+#                             'the first click instead of the whole list (relevant '
+#                             ' only when `ucb` or `kl-ucb` is used for ranking '
+#                             'preselection)')
+
+#     @classmethod
+#     def getName(cls):
+#         '''
+#         Returns the name of the algorithm.
+#         '''
+#         return 'RelativeRankingAlgorithm'
+
+#     def get_ranking(self, ranking):
+#         # Get the required statistics from the feedback model.
+#         Lambdas, N = self.feedback_model.statistics()
+
+#         # Number of query documents and cutoff are available field variables.
+#         L = self.n_documents
+#         K = self.cutoff
+
+#         # Keep track of time inside the model. It is guaranteed that the pair
+#         # of methods get_ranking and set_feedback is going to be called
+#         # in this order each time step.
+#         self.t += 1
+
+#         # Sanity check that the arrays are in order ijkl.
+#         if Lambdas.shape != (L, L, K, K):
+#             raise ValueError('misordered dimension in lambdas and counts')
+
+#         if self.t < self.t_explore:
+#             if self.uniform:
+#                 self.shuffler.sample(ranking)
+#             else:
+#                 self.shuffler.get_ranking(ranking)
+#         elif self.t == self.t_explore:
+#             if self.uniform:
+#                 Lambda_ij = Lambdas
+#                 Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+#                 N_ij = N
+#                 N_ji = np.swapaxes(N_ij, 0, 1)
+    
+#                 P = Lambda_ij / N_ij - Lambda_ji / N_ji
+    
+#                 self.C = np.argsort(P.sum(axis=(1, 2, 3)))
+#             else:
+#                 self.C = self.shuffler.get_ranking()
+
+#             ranking[:K] = self.C[:K]
+#             self.feedback_model.reset()
+#         else:
+#             # Lambda_ij is the same as Lambdas
+#             Lambda_ij = Lambdas
+
+#             # Lambda_ji is the transpose of Lambda_ij. This operation
+#             # is very cheap in NumPy >= 1.10 because only a view needs
+#             # to be created.
+#             Lambda_ji = np.swapaxes(Lambda_ij, 0, 1)
+
+#             # N_ij is the same as N.
+#             N_ij = N
+
+#             # N_ji is the transpose of N_ij. Similarly to construction
+#             # of Lambda_ji this can turn out to be very cheap.
+#             N_ji = np.swapaxes(N_ij, 0, 1)
+
+#             # P is the frequentist mean.
+#             P = Lambda_ij / N_ij - Lambda_ji / N_ji
+
+#             # C is the size of the confidence interval
+#             C = (np.sqrt(self.alpha * np.log(self.t) / N_ij) + 
+#                  np.sqrt(self.alpha * np.log(self.t) / N_ji))
+
+#             # Get LCB.
+#             LCB = P - C
+
+#             # The partial order.
+#             P_t = (LCB > 0).any(axis=(2, 3))
+
+#             # Incorrectly ordered document indices.
+#             I = np.flatnonzero(np.r_[P_t[self.C[1:K], self.C[:(K - 1)]],
+#                                      P_t[self.C[K:], self.C[K - 1]]])
+
+#             if len(I) > 0:
+#                 k = I.min()
+                
+#                 if k < K - 1:
+#                     self.C[k], self.C[k + 1] = self.C[k + 1], self.C[k]
+
+#                     self.feedback_model.lambdas[:, :, k:, k:] = 1
+#                     self.feedback_model.counts[:, :, k:, k:] = 2
+#                     # Sanity check that the feedback model statistics have changed.
+#                     if (self.feedback_model.statistics()[0][:, :, k:, k:] != 1).any():
+#                         raise ValueError, 'Feedback model has not changed as was expected!!!'
+                
+#                 else:
+#                     self.C[K - 1], self.C[k + 1] = self.C[k + 1], self.C[K - 1]
+
+#             ranking[:K] = self.C[:K]
+            
+#             # Non-conforming pairwise document orderings.
+#             N = np.flatnonzero(~np.r_[P_t[self.C[:(K - 1)], self.C[1:K]],
+#                                       P_t[self.C[K - 1], self.C[K:]]])
+
+#             if len(N) > 0:
+#                 k = self.random_state.choice(N)
+
+#                 if k < K - 1:
+#                     if self.random_state.rand() < 0.5:
+#                         ranking[k] = self.C[k + 1]
+#                         ranking[k + 1] = self.C[k]
+#                 else:
+#                     if self.random_state.rand() < 0.5:
+#                         ranking[K - 2] = self.C[k + 1]
+#                     else:
+#                         ranking[K - 2] = self.C[K - 1]
+#                         ranking[K - 1] = self.C[k + 1]
+
+#     def set_feedback(self, ranking, clicks):
+#         if self.t < self.t_explore:
+#             if not self.uniform:
+#                 self.shuffler.set_feedback(ranking, clicks)
+#         super(RelativeRankingAlgorithm, self).set_feedback(ranking, clicks)
 
 
 class RelativeRankingAlgorithmV1_TooSlow(BaseLambdasRankingBanditAlgorithm):
@@ -685,7 +1011,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         # by P_t (preferences).
         chain = []
 
-        indicator = np.zeros(self.n_documents,dtype="bool")
+        indicator = np.zeros(self.n_documents, dtype="bool")
 
         for d in queue:
             indicator[d] = True
@@ -945,8 +1271,9 @@ class StackedRankingBanditsAlgorithm(BaseRankingBanditAlgorithm):
                             required=False, help='alpha parameter for UCB '
                             '(used only if "--method UCB" is specified)')
         parser.add_argument('-f', '--first-click', action='store_true',
-                            required=False, help='consider feedback up to '
-                            'the last click instead of the first (default)')
+                            required=False, help='consider feedback only up to '
+                            'the first click instead of the whole feedback list '
+                            '(default)')
 
     @classmethod
     def getName(cls):
@@ -978,11 +1305,11 @@ class StackedRankingBanditsAlgorithm(BaseRankingBanditAlgorithm):
         self.preranker.set_feedback(self.indices, clicks)
 
         clicks_cutoff = clicks.shape[0]
-
-        if not self.first_click_feedback:
+        
+        if self.first_click_feedback:
             clicked_ranks = clicks.nonzero()[0]
             if len(clicked_ranks) > 0:
-                clicks_cutoff = clicked_ranks[-1] + 1
+                clicks_cutoff = clicked_ranks[0] + 1    
 
         for i, c in zip(self.indices, clicks[:clicks_cutoff]):
             j = self.__tmp_indices[i]

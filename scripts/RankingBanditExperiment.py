@@ -54,8 +54,10 @@ class RankingBanditExperiment(object):
         identity = np.arange(self.n_documents, dtype='int32')
 
         # History of all rankings produced by the model.
-        rankings = np.empty((self.n_impressions, self.n_documents),
+        rankings = -np.ones((self.n_impressions, self.n_documents),
                             dtype='int32')
+        
+        # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff, satisfied=False)
 
         # Run for the specified number of iterations.
         for t in xrange(self.n_impressions):
@@ -64,18 +66,21 @@ class RankingBanditExperiment(object):
 
             # Get a ranking based on the current state of the model...
             self.ranking_model.get_ranking(ranking=ranking)
-
-            # print t, ranking
+            
+            # Just to make sure the algorithm always works
+            # with documents for which we have got feedback.
+            _ranking = ranking[:self.cutoff]
+            
+            # print t, _ranking
 
             # get user clicks on that ranking...
-            clicks = self.click_model.get_clicks(ranking[:self.cutoff],
-                                                 identity)
+            clicks = self.click_model.get_clicks(_ranking, identity)
 
             # ... and allow the model to learn from them.
-            self.ranking_model.set_feedback(ranking, clicks)
+            self.ranking_model.set_feedback(_ranking, clicks)
 
-        # print 'final ranking:', ranking
-        # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff)
+        # print 'final ranking:', _ranking
+        # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff, satisfied=False)
 
         self.ranking_model.cleanup()
 

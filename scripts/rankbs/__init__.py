@@ -1,3 +1,4 @@
+from .bandits import RelativeUCB1
 from .bandits import CascadeUCB1
 from .bandits import CascadeKL_UCB
 from .bandits import CascadeThompsonSampler
@@ -10,6 +11,7 @@ except:
     __version__ = '?'
 
 __all__ = [
+    'RelativeUCB1',
     'CascadeUCB1',
     'CascadeKL_UCB',
     'CascadeThompsonSampler',
