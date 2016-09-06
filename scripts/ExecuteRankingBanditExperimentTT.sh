@@ -18,20 +18,32 @@ echo "Started at `date`"
 # ============================================================================
 # CascadeUCB1 algorithm
 # ============================================================================
-# mkdir -p experiments/CascadeUCB1Algorithm1e7
-# python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r CascadeUCB1Algorithm -a 0.51 experiments/CascadeUCB1Algorithm1e7
+# for i in `seq 10`
+# do
+#     echo "Run #${i}..."
+#     mkdir -p experiments/CascadeUCB1Algorithm/run${i}
+#     python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} CascadeUCB1Algorithm -a 0.51 experiments/CascadeUCB1Algorithm/run${i}
+# done
 
 # ============================================================================
 # CascadeKL-UCB algorithm
 # ============================================================================
-# mkdir -p experiments/CascadeKLUCBAlgorithm1e7
-# python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm1e7
+# for i in `seq 10`
+# do
+#     echo "Run #${i}..."
+#     mkdir -p experiments/CascadeKLUCBAlgorithm${i}
+#     python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} CascadeKLUCBAlgorithm experiments/CascadeKLUCBAlgorithm${i}
+# done
 
 # ============================================================================
 # RelativeCascadeUCB1 algorithm
 # ============================================================================
-mkdir -p experiments/RelativeCascadeUCB1Algorithm
-python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r RelativeCascadeUCB1Algorithm -a 0.51 experiments/RelativeCascadeUCB1Algorithm
+# for i in `seq 10`
+# do
+#     echo "Run #${i}..."
+#     mkdir -p experiments/RelativeCascadeUCB1Algorithm/run${i}
+#     python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} RelativeCascadeUCB1Algorithm -a 0.51 experiments/RelativeCascadeUCB1Algorithm/run${i}
+# done
 
 # ============================================================================
 # RelativeRanking algorithm
