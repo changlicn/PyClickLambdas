@@ -573,13 +573,9 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
                         if mus[s - 1] - self.delta > mus[s] + self.delta:
                             nextS.append(offset + s)
                 
-                print self.S
-                
                 # Update the splits for the next round (omitting the 1st,
                 # which is just an auxiliary index).
                 self.S = np.array(nextS[1:], dtype='int32')
-                
-                print self.S
         else:
             self.finished = True
 
