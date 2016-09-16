@@ -21,7 +21,8 @@ from joblib import Parallel, delayed
 
 class RankingBanditExperiment(object):
     def __init__(self, query, click_model, ranking_model, n_documents,
-                 n_impressions, cutoff, compute_regret, outputdir):
+                 n_impressions, cutoff, compute_regret, store_rankings,
+                 seed, outputdir):
         self.query = query
         self.click_model = click_model
         self.ranking_model = ranking_model
@@ -29,6 +30,8 @@ class RankingBanditExperiment(object):
         self.n_impressions = n_impressions
         self.cutoff = cutoff
         self.compute_regret = compute_regret
+        self.store_rankings = store_rankings
+        self.seed = seed
         self.outputdir = outputdir
 
         # Sanity check that ranking model is really focused
@@ -57,6 +60,8 @@ class RankingBanditExperiment(object):
         rankings = -np.ones((self.n_impressions, self.n_documents),
                             dtype='int32')
         
+        self.click_model.seed = self.seed
+        
         # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff, satisfied=False)
 
         # Run for the specified number of iterations.
@@ -71,7 +76,8 @@ class RankingBanditExperiment(object):
             # with documents for which we have got feedback.
             _ranking = ranking[:self.cutoff]
             
-            # print t, _ranking
+            # if t % 10000 == 0:
+            #     print t, _ranking
 
             # get user clicks on that ranking...
             clicks = self.click_model.get_clicks(_ranking, identity)
@@ -83,31 +89,36 @@ class RankingBanditExperiment(object):
         # print 'ideal ranking:', self.click_model.get_ideal_ranking(cutoff=self.cutoff, satisfied=False)
 
         self.ranking_model.cleanup()
+        
+        # To get consistent results with regret calculated
+        # later from the saved rankings. Still, the safest
+        # thing to do is to call the following line before
+        # simulating the clicks.
+        self.click_model.seed = self.seed
 
         info = {}
         info['query'] = self.query
         info['click_model'] = self.click_model
         info['ranking_model'] = self.ranking_model
         info['cutoff'] = self.ranking_model.cutoff
+        info['n_documents'] = self.n_documents
         info['n_impressions'] = self.n_impressions
+        info['seed'] = self.seed
 
         # Save the specifications of the experiment...
         with open(self.get_output_filepath(suffix='experiment') + '.nfo', 'wb') as ofile:
             pickle.dump(info, ofile, protocol=-1)
 
-        # ... the rankings ...
-        np.save(self.get_output_filepath(suffix='rankings'), rankings)
+        # ... the rankings (based on specified options) ...
+        if self.store_rankings or not self.compute_regret:
+            np.save(self.get_output_filepath(suffix='rankings'), rankings[:, :self.cutoff])
 
         # ... and (optionally) the cumulative regret.
         if self.compute_regret:
-            # To get consistent results with regret calculated
-            # later (when `compute_regret` was False)
-            prepare_click_model(self.click_model)
-
             # Create an instance of simple CTR regret evaluator.
             evaluator = ClickthroughRateRegretEvaluator(self.click_model)
 
-            regret = evaluator.evaluate(info, rankings)
+            regret = evaluator.evaluate(info, rankings[:, :self.cutoff])
 
             # print 'regret:', regret.cumsum()
 
@@ -117,23 +128,7 @@ class RankingBanditExperiment(object):
 
 def load_click_models(source='./data/model_query_collection.pkl'):
     with open(source) as ifile:
-        MQD = pickle.load(ifile)
-
-    # For reproducibility -- re-seed the click models' RNGs.
-    for click_model_name in MQD:
-        for query in MQD[click_model_name]:
-            prepare_click_model(MQD[click_model_name][query]['model'])
-
-    return MQD
-
-
-def prepare_click_model(click_model):
-    '''
-    Prepare the click model for reproducible experiment. This
-    consists of simply reseeding the internal random number
-    generator of the particular click model.
-    '''
-    click_model.seed = 42
+        return pickle.load(ifile)
 
 
 def parse_command_line_arguments(MQD):
@@ -147,7 +142,8 @@ def parse_command_line_arguments(MQD):
 
     parser.add_argument('-v', '--verbose', type=int, default=0, help='verbosity level')
     parser.add_argument('-r', '--regret', action='store_true', help='indicates that the regret of the algorithm should be calculated as well')
-    parser.add_argument('-q', '--query', choices=['all'] + MQD['UBM'].keys(), default='all', help='query for which the experiment is executed')
+    parser.add_argument('-d', '--store_rankings', action='store_true', help='indicates that the sequence of rankings made by the algorithm should be stored (they are if `regret` option is not specified)')
+    parser.add_argument('-q', '--query', choices=['all'] + MQD[MQD.keys()[0]].keys(), default='all', help='query for which the experiment is executed')
     parser.add_argument('-m', '--click-model', choices=['all'] + MQD.keys(), default='all', help='user model used for generating clicks')
     parser.add_argument('-n', '--n-impressions', type=int, default=1, help='number of impressions')
     parser.add_argument('-c', '--cutoff', type=int, default=10, help='impressions will consist of only this number of documents')
@@ -160,7 +156,8 @@ def parse_command_line_arguments(MQD):
 
 def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
                         click_model_names, queries, n_impressions,
-                        cutoff, compute_regret, seed, outputdir):
+                        cutoff, compute_regret, store_ranking, seed,
+                        outputdir):
     '''
     Method that prepares experiments.
     '''
@@ -175,7 +172,8 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             ranking_model_args['relevances'] = relevances
             ranking_model_args['n_documents'] = n_documents
-            ranking_model_args['random_state'] = np.random.RandomState(seed)
+            ranking_model_args['random_state'] = np.random.RandomState(31 * seed)
+            ranking_model_args['n_impressions'] = n_impressions
 
             ranking_model = getattr(RankingBanditAlgorithm, ranking_model_name)(**ranking_model_args)
 
@@ -183,7 +181,8 @@ def prepare_experiments(MQD, ranking_model_name, ranking_model_args,
 
             experiments.append(RankingBanditExperiment(query, click_model, ranking_model,
                                                        n_documents, n_impressions, cutoff,
-                                                       compute_regret, outputdir))
+                                                       compute_regret, store_ranking, seed,
+                                                       outputdir))
     return experiments
 
 
@@ -217,12 +216,15 @@ if __name__ == '__main__':
     # query ID(s) ...
     queries = kwargs.pop('query')
     if queries == 'all':
-        queries = MQD['UBM'].keys()
+        queries = MQD[MQD.keys()[0]].keys()
     else:
         queries = [queries]
 
     # the regret computation indicator
     compute_regret = kwargs.pop('regret')
+    
+    # the save ranking indicator
+    store_rankings = kwargs.pop('store_rankings')
 
     # the number of impressions (time steps) ...
     n_impressions = kwargs.pop('n_impressions')
@@ -250,7 +252,8 @@ if __name__ == '__main__':
     # Prepare experiments based on the parsed parameters...
     experiments = prepare_experiments(MQD, ranking_model_name, kwargs,
                                       click_model_names, queries, n_impressions,
-                                      cutoff, compute_regret, seed, outputdir)
+                                      cutoff, compute_regret, store_rankings,
+                                      seed, outputdir)
 
     # and run them, conveniently, in parallel loops.
     Parallel(n_jobs=n_jobs, verbose=verbose)(

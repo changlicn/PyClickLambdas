@@ -50,7 +50,7 @@ class ClickthroughRateRegretEvaluator(BaseRegretEvaluator):
         cutoff = info['cutoff']
 
         # Used internally by the click model.
-        identity = np.arange(rankings.shape[1], dtype='int32')
+        identity = np.arange(info['n_documents'], dtype='int32')
 
         # Get the ideal top-`cutoff` ranking for the click model ...
         ideal_ranking = self.click_model.get_ideal_ranking(cutoff=cutoff)
@@ -86,10 +86,11 @@ def evaluate_ranking_algorithm(ifilepath, outputfile):
     info, rankings = load_model_rankings(ifilepath)
 
     click_model = info['click_model']
-
-    # Make sure we load the click models the same way as in experiments
-    from RankingBanditExperiment import prepare_click_model
-    prepare_click_model(click_model)
+    
+    # Make sure we re-seed the click model in order to
+    # replicate the clicks in the same way they were
+    # produced in the particular experiment.
+    click_model.seed = info['seed']
 
     evaluator = ClickthroughRateRegretEvaluator(click_model)
 
