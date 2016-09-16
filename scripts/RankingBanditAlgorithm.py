@@ -35,6 +35,7 @@ class BaseRankingBanditAlgorithm(object):
             self.n_documents = kwargs['n_documents']
             self.cutoff = kwargs['cutoff']
             self.random_state = kwargs['random_state']
+            self.n_impressions = kwargs['n_impressions']
             if self.random_state is None:
                 random_state = np.random.RandomState()
         except KeyError as e:
@@ -305,6 +306,191 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
 
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
+
+        
+class MergeRank(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(MergeRank, self).__init__(*args, **kwargs)
+        try:
+            self.D = np.arange(self.n_documents, dtype='int32')
+            self.C = 0.5 * np.ones(self.n_documents, dtype='float64')
+            self.N = np.ones(self.n_documents, dtype='float64')
+            self.S = []
+            self.t = 0
+            self.T = kwargs['n_impressions']
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'MergeRank'
+
+    def get_ranking(self, ranking):
+        K = self.cutoff
+        if self.t < self.T:
+            for ds in np.arrray_split(self.D, self.S):
+                self.random_state.shuffle(ds)
+        ranking[:K] = self.D[:K]
+
+    def set_feedback(self, ranking, clicks):
+        clicked_ranks = clicks.nonzero()[0]
+        
+        if len(clicked_ranks) > 0:
+            cutoff = clicked_ranks[-1] + 1
+        else:
+            cutoff = self.cutoff
+
+        for d, c in zip(ranking[1:cutoff], clicks[1:cutoff]):
+            self.C[d] += c
+            self.N[d] += 1
+        
+        mus = self.C / self.N
+        cbs = np.sqrt(self.n_documents * self.T / self.N)
+        
+        ucb = mus + cbs
+        lcb = mus - cbs
+        
+        k = 0
+        for ds in np.arrray_split(self.D, self.S):
+            k += len(ds)
+            
+            ################################################
+            # TODO: Find a (potential) split and add it to
+            #       self.S
+            ################################################
+
+            if k > K:
+                break
+        self.t += 1
+        
+
+class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(QuickRankAlgorithm, self).__init__(*args, **kwargs)
+
+        try:
+            self.T = kwargs['n_impressions']
+            
+            self.D = range(self.n_documents)
+            self.K = self.cutoff
+            self.D_f = []
+            self.R = []
+            
+            self.v = np.zeros(self.n_documents, dtype='float64')
+            self.n = np.zeros(self.n_documents, dtype='float64')
+            self.m = 0
+            self.N = 0
+            self.delta = 1.0
+
+            self.stack = []
+            self.finished = False
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'QuickRankAlgorithm'
+
+    def get_ranking(self, ranking):
+        # If only a single document has left in the active
+        # set of documents --> extend the ranking prefix
+        # and "go back" one stack frame, if there is any.
+        if len(self.D) == 1:
+            self.R.append(self.D[0])
+            
+            if len(self.stack) > 0:
+                self.D, self.K, self.D_f = self.stack.pop()
+            
+                self.v.fill(0)
+                self.n.fill(0)
+            
+                self.m = 0
+                self.N = 0
+                self.delta = 1.0
+            else:
+                self.finished = True
+
+        # If the time horizon was reached we present
+        # what ever ranking we ended up with.
+        if self.finished:
+            ranking[:self.cutoff] = self.R[:self.cutoff]
+            return                
+        
+        # While in m-th round...
+        if self.m <= np.log2(self.T):
+            # present a raking with K randomly shuffled documents from
+            # the active set D...
+            if self.N <= 2 * np.log(self.T * len(self.D)) / self.delta**2:
+                r = np.concatenate([self.R,
+                                   self.random_state.choice(self.D, size=self.K, replace=False), 
+                                   self.D_f])
+                ranking[:self.cutoff] = r[:self.cutoff]
+                self.N += 1
+            else:
+                # ... and once a certain number of impressions (depending on
+                # the round) has been reach, compute documents' click-through
+                # rate.
+                with np.errstate(invalid='ignore'):
+                    mus = np.nan_to_num(self.v / self.n)[self.D]
+                
+                indices = np.argsort(mus)[::-1]
+    
+                mus = mus[indices]    
+                self.D = [self.D[i] for i in indices]
+            
+                self.delta /= 2.0
+                self.m += 1
+                
+                # Finally, we try to find a split, which separates the documents
+                # into 2 groups - ones which are superior to the others as far
+                # as their relevance is concerned.
+                s = -1
+                for i in range(1, len(self.D)):
+                    if mus[i - 1] - self.delta > mus[i] + self.delta:
+                        s = i
+                
+                # If we found the split...
+                if s != -1:
+                    # ... we create a new stack frame into which we postpone
+                    # the processing of inferior documents from the active set
+                    # (only if needed).
+                    if s < self.K:
+                        self.stack.append((self.D[s:], self.K - s, self.D_f[:]))
+                    
+                    self.D_f = self.D[s:] + self.D_f
+                    self.D = self.D[:s]
+                    self.K = s
+                    
+                    self.v.fill(0)
+                    self.n.fill(0)
+
+                    self.m = 0
+                    self.N = 0
+                    self.delta = 1.0
+        else:
+            self.finished = True
+            
+            with np.errstate(invalid='ignore'):
+                indices = np.argsort(np.nan_to_num(self.v / self.n)[self.D])[::-1]                
+                        
+            self.R.extend([self.D[i] for i in indices])
+            self.R.extend(self.D_f)
+
+            ranking[:self.cutoff] = self.R[:self.cutoff]
+
+
+    def set_feedback(self, ranking, clicks):
+        for d, c in zip(ranking[len(self.R):self.cutoff], clicks[len(self.R):self.cutoff]):
+            self.v[d] += c
+            self.n[d] += 1
 
 
 class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
