@@ -9,6 +9,7 @@ import ClickLambdasAlgorithm
 from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
 
+from rankbs import UCB1
 from rankbs import RelativeUCB1
 from rankbs import CascadeUCB1
 from rankbs import CascadeKL_UCB
@@ -308,9 +309,9 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         self.ranker.set_feedback(ranking, clicks)
 
         
-class MergeRank(BaseRankingBanditAlgorithm):
+class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
-        super(MergeRank, self).__init__(*args, **kwargs)
+        super(MergeRankAlgorithm, self).__init__(*args, **kwargs)
         try:
             self.D = np.arange(self.n_documents, dtype='int32')
             self.C = 0.5 * np.ones(self.n_documents, dtype='float64')
@@ -397,7 +398,7 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
         '''
         Returns the name of the algorithm.
         '''
-        return 'QuickRankAlgorithm'
+        return 'QuickRank'
 
     def get_ranking(self, ranking):
         # If only a single document has left in the active
@@ -491,6 +492,176 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
         for d, c in zip(ranking[len(self.R):self.cutoff], clicks[len(self.R):self.cutoff]):
             self.v[d] += c
             self.n[d] += 1
+
+
+class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(ShuffleAndSplitAlgorithm, self).__init__(*args, **kwargs)
+
+        try:
+            self.R = np.arange(self.n_documents, dtype='int32')
+            self.v = np.zeros(self.n_documents, dtype='float64')
+            self.n = np.zeros(self.n_documents, dtype='float64')
+            self.T = kwargs['n_impressions']
+            self.m = 0
+            self.N = 0
+            self.delta = 1.0
+            self.S = np.array([], dtype='int32')
+            self.finished = False
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'ShuffleAndSplit'
+
+    def get_ranking(self, ranking):
+        if self.finished:
+            ranking[:self.cutoff] = self.R[:self.cutoff]
+        elif self.m <= np.log2(self.T):
+            # While in m-th round, present a ranking with randomly shuffled
+            # documents within each "relevance" group for certain number
+            # of impressions...
+            if self.N <= 2 * np.log(self.T * self.cutoff) / self.delta**2:
+                self.N += 1
+                for ds in np.array_split(self.R, self.S):
+                    self.random_state.shuffle(ds)
+                ranking[:self.cutoff] = self.R[:self.cutoff]
+            else:
+                self.m += 1
+                self.delta /= 2.0
+                
+                # This will hold the split positions for
+                # the next round.
+                nextS = []
+                
+                # ... and once that certain number of impressions (depending on
+                # the round) has been reached, compute documents' click-through
+                # rate...
+                with np.errstate(invalid='ignore'):
+                    mus = np.nan_to_num(self.v / self.n)[self.R]
+                                
+                # ... and based on the current confidence intervals, find out
+                # whether some of the document "relevance" group should not be
+                # split.
+                for mus, offset in zip(np.array_split(mus, self.S), np.r_[0, self.S]):
+                    # We keep the old split positions.
+                    nextS.append(offset)
+                    
+                    # If a group consists of a single document
+                    # there is nothing to do.
+                    if len(mus) == 1:
+                        continue
+                    
+                    indices = np.argsort(mus)[::-1]
+
+                    # Sorted CTR estimates of documents within a group...
+                    mus = mus[indices]  
+                    # ... and the corresponding document indices.
+                    ds = self.R[indices + offset]
+                    
+                    self.R[offset:(offset + len(ds))] = ds
+                            
+                    # Go through the documents within the "relevance" group...
+                    for s in range(1, len(ds)):
+                        # ... and if we find consecutive pair of not overlapping
+                        # confidence intervals , we split the group between them.
+                        if mus[s - 1] - self.delta > mus[s] + self.delta:
+                            nextS.append(offset + s)
+                
+                print self.S
+                
+                # Update the splits for the next round (omitting the 1st,
+                # which is just an auxiliary index).
+                self.S = np.array(nextS[1:], dtype='int32')
+                
+                print self.S
+        else:
+            self.finished = True
+
+            final_ranking = []
+
+            with np.errstate(invalid='ignore'):
+                mus = np.nan_to_num(self.v / self.n)[self.R]
+
+            # No more exploratory impressions allowed, so we sort
+            # the documents within each group according to their
+            # estimated click-through rates and hope for the best.
+            
+            for mus, offset in np.zip(np.array_split(mus, self.S), np.r_[0, self.S]):
+                final_ranking.extend(self.R[np.argsort(mus)[::-1] + offset])
+
+            self.R[:] = final_ranking
+
+    def set_feedback(self, ranking, clicks):
+        for d, c in zip(ranking[:self.cutoff], clicks[:self.cutoff]):
+            self.v[d] += c
+            self.n[d] += 1
+
+
+class RankedUCB1BanditsAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(RankedUCB1BanditsAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            # Create one MAB for each rank.
+            self.rankers = [UCB1(self.n_documents, alpha=kwargs['alpha'],
+                                         random_state=self.random_state)
+                            for _ in range(self.cutoff)]
+            self.t = 0
+            self.T = kwargs['n_impressions']
+            
+            self.__tmp_ranking = np.empty(self.cutoff, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RankedUCB1BanditsAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--alpha', type=float, default=0.51,
+                            required=True, help='alpha parameter')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RankedUCB1Bandits'
+
+    def get_ranking(self, ranking):
+        D = set(range(self.n_documents))
+
+        if self.t < self.T: 
+            for r, ranker in enumerate(self.rankers):
+                self.__tmp_ranking[r] = ranker.get_arm()
+                
+                if self.__tmp_ranking[r] in ranking[:r]:
+                    ranking[r] = self.random_state.choice(list(D))
+                else:
+                    ranking[r] = self.__tmp_ranking[r]
+                
+                D.remove(ranking[r])
+        else:
+            for r, ranker in enumerate(self.rankers):
+                ranking[r] = ranker.get_arm()
+
+    def set_feedback(self, ranking, clicks):
+        if self.t < self.T:
+            clicked_ranks = clicks.nonzero()[0]
+
+            if len(clicked_ranks) > 0:
+                cutoff = clicked_ranks[-1] + 1
+            else:
+                cutoff = self.cutoff
+            
+            for d, dhat, c, ranker in zip(ranking[:cutoff], self.__tmp_ranking[:cutoff],
+                                          clicks, self.rankers[:cutoff]):
+                c = 1 if c and d == dhat else 0                    
+                ranker.update_arm(dhat, c)
 
 
 class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):

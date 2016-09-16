@@ -106,6 +106,216 @@ cdef inline DOUBLE_t logsumexp(DOUBLE_t *a, INT_t sz) nogil:
     return amax + log(sumexp)
 
 
+cdef class UCB1(object):
+    cdef readonly INT_t     L
+    cdef readonly INT_t     t
+    cdef DOUBLE_t*          S
+    cdef DOUBLE_t*          N
+    cdef readonly DOUBLE_t  alpha
+    cdef readonly UINT_t    rand_r_state
+
+    property wins:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.S)
+    
+    property pulls:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.N)
+
+    property means:
+        def __get__(self):
+            return self.wins / self.pulls
+    
+    def __cinit__(self, INT_t L, DOUBLE_t alpha=0.51, object random_state=None):
+        self.L = L
+        self.t = 0
+        self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        self.alpha = alpha
+        if random_state is None:
+            self.rand_r_state = np.random.randint(1, RAND_R_MAX)
+        else:
+            self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+
+    def __dealloc__(self):
+        free(self.S)
+        free(self.N)
+
+    def __reduce__(self):
+        ''' 
+        Reduce reimplementation, for pickling.
+        '''
+        return (UCB1, (self.L, self.alpha), self.__getstate__())
+
+    def __setstate__(self, d):
+        self.t = d['t']
+        memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
+        memcpy(self.N, (<np.ndarray> d['N']).data, self.L * sizeof(DOUBLE_t))
+        self.rand_r_state = d['rand_r_state']
+
+    def __getstate__(self):
+        d = {}
+        d['t'] = self.t
+        d['S'] = __wrap_in_1d_double(self, self.L, self.S)
+        d['N'] = __wrap_in_1d_double(self, self.L, self.N)
+        d['rand_r_state'] = self.rand_r_state
+        return d
+
+    def get_arm(self):
+        ''' 
+        Returns an arm that should be pulled in the next round.
+
+        Parameters
+        ----------
+        arm:
+            The index of the arm to pull.
+        '''
+        cdef INT_t i, index = 0
+        cdef DOUBLE_t ucb, max_ucb = -1.0
+
+        if self.t < self.L:
+            # Make sure that in the first L steps each arm is played once.
+            index = self.t
+        else:
+            for i in range(self.L):
+                ucb = self.S[i] / self.N[i] + sqrt(self.alpha * log(self.t) / self.N[i])
+                if max_ucb < ucb:
+                    max_ucb = ucb
+                    index = i
+
+        return index
+
+    def update_arm(self, INT_t index, INT_t feedback):
+        ''' 
+        Update the arm using the specified feedback.
+
+        Parameters
+        ----------
+        index : int
+            The index of the arm to update
+
+        feedback : int
+            The 0/1 feedback.
+        '''
+        self.S[index] += feedback
+        self.N[index] += 1.0
+        self.t += 1
+
+
+cdef class KLUCB(object):
+    cdef readonly INT_t     L
+    cdef readonly INT_t     t
+    cdef DOUBLE_t*          S
+    cdef DOUBLE_t*          N
+    cdef readonly UINT_t    rand_r_state
+
+    property wins:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.S)
+    
+    property pulls:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.N)
+
+    property means:
+        def __get__(self):
+            return self.wins / self.pulls
+    
+    def __cinit__(self, INT_t L, object random_state=None):
+        self.L = L
+        self.t = 0
+        self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        if random_state is None:
+            self.rand_r_state = np.random.randint(1, RAND_R_MAX)
+        else:
+            self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+    
+    def __dealloc__(self):
+        free(self.S)
+        free(self.N)
+
+    def __reduce__(self):
+        ''' 
+        Reduce reimplementation, for pickling.
+        '''
+        return (KLUCB, (self.L,), self.__getstate__())
+
+    def __setstate__(self, d):
+        self.t = d['t']
+        memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
+        memcpy(self.N, (<np.ndarray> d['N']).data, self.L * sizeof(DOUBLE_t))
+        self.rand_r_state = d['rand_r_state']
+
+    def __getstate__(self):
+        d = {}
+        d['t'] = self.t
+        d['S'] = __wrap_in_1d_double(self, self.L, self.S)
+        d['N'] = __wrap_in_1d_double(self, self.L, self.N)
+        d['rand_r_state'] = self.rand_r_state
+        return d
+
+    @staticmethod
+    cdef DOUBLE_t compute_ucb(DOUBLE_t p, DOUBLE_t e) nogil:
+        '''
+        Find q = argmax{q in [p, 1]: KL(p, q) <= e}.
+        '''
+        cdef DOUBLE_t kld, q, prev_q
+
+        p = p if p < (1 - 2 * DOUBLE_EPSILON) else (1 - 2 * DOUBLE_EPSILON)
+        p = p if p > DOUBLE_EPSILON else DOUBLE_EPSILON
+
+        prev_q = (1 + DOUBLE_EPSILON)
+        q = (1 - DOUBLE_EPSILON)
+
+        if KLdivergence(p, q) > e:
+            while (prev_q - q) > DOUBLE_EPSILON:
+                prev_q = q
+                q += (e - KLdivergence(p, q)) / dKLdivergence(p, q)
+
+        return q
+    
+    def get_arm(self):
+        ''' 
+        Returns an arm that should be pulled in the next round.
+
+        Parameters
+        ----------
+        arm:
+            The index of the arm to pull.
+        '''
+        cdef INT_t i, index = 0
+        cdef DOUBLE_t ucb, max_ucb = -1.0
+
+        if self.t < self.L:
+            # Make sure that in the first L steps each arm is played once.
+            index = self.t
+        else:
+            for i in range(self.L):
+                ucb = KLUCB.compute_ucb(self.S[i] / self.N[i], log(self.t) / self.N[i])
+                if max_ucb < ucb:
+                    max_ucb = ucb
+                    index = i
+
+        return index
+
+    def update_arm(self, INT_t index, INT_t feedback):
+        ''' 
+        Update the arm using the specified feedback.
+
+        Parameters
+        ----------
+        index : int
+            The index of the arm to update
+
+        feedback : int
+            The 0/1 feedback.
+        '''
+        self.S[index] += feedback
+        self.N[index] += 1.0
+        self.t += 1
+
+
 cdef class RelativeUCB1(object):
     cdef readonly INT_t     L
     cdef readonly INT_t     t

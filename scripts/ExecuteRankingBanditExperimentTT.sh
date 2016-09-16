@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'QuickRank')
+ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'QuickRank' 'ShuffleAndSplit')
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
 OUTPUTDIR='experiments'
@@ -78,6 +78,42 @@ then
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
         python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} QuickRankAlgorithm ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
+    done
+    echo "Done: `date`"
+    echo "========================================"
+    echo
+fi
+
+# ============================================================================
+# RankedUCB1Bandits algorithm
+# ============================================================================
+if shouldRun 'RankedUCB1Bandits'
+then
+    echo "Running experiments for RankedUCB1Bandits"
+    echo "========================================"
+    for i in `seq 1`
+    do
+        echo "Run #${i} started: `date`"
+        mkdir -p ${OUTPUTDIR}/RankedUCB1BanditsAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} RankedUCB1BanditsAlgorithm -a 0.51 ${OUTPUTDIR}/RankedUCB1BanditsAlgorithm/run${i}
+    done
+    echo "Done: `date`"
+    echo "========================================"
+    echo
+fi
+
+# ============================================================================
+# ShuffleAndSplit algorithm
+# ============================================================================
+if shouldRun 'ShuffleAndSplit'
+then
+    echo "Running experiments for ShuffleAndSplit"
+    echo "========================================"
+    for i in `seq 1`
+    do
+        echo "Run #${i} started: `date`"
+        mkdir -p ${OUTPUTDIR}/ShuffleAndSplitAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} ShuffleAndSplitAlgorithm ${OUTPUTDIR}/ShuffleAndSplitAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
