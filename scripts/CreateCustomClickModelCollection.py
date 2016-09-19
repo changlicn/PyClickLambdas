@@ -34,6 +34,11 @@ if __name__ == '__main__':
     
     r4 = np.array([1.0 / np.log(1 + np.log((x + 1) * np.e)) for x in range(10)]);
     r4 /= r4.sum()
+
+    np.random.shuffle(r1)
+    np.random.shuffle(r2)
+    np.random.shuffle(r3)
+    np.random.shuffle(r4)
     
     # The document relevances for each query.
     Rs = [r1, r2, r3, r4]
