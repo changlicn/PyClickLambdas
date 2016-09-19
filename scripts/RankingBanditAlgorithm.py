@@ -314,12 +314,12 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         super(MergeRankAlgorithm, self).__init__(*args, **kwargs)
         try:
             self.D = np.arange(self.n_documents, dtype='int32')
-            self.C = 0.5 * np.ones(self.n_documents, dtype='float64')
-            self.N = np.ones(self.n_documents, dtype='float64')
+            self.C = np.zeros(self.n_documents, dtype='float64')
+            self.N = np.zeros(self.n_documents, dtype='float64')
             self.S = []
             self.t = 0
             self.T = kwargs['n_impressions']
-
+            np.set_printoptions(linewidth=np.inf)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -331,41 +331,73 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         return 'MergeRank'
 
     def get_ranking(self, ranking):
-        K = self.cutoff
         if self.t < self.T:
-            for ds in np.arrray_split(self.D, self.S):
+            for ds in np.array_split(self.D, self.S):
                 self.random_state.shuffle(ds)
-        ranking[:K] = self.D[:K]
+        ranking[:self.cutoff] = self.D[:self.cutoff]
 
     def set_feedback(self, ranking, clicks):
-        clicked_ranks = clicks.nonzero()[0]
-        
-        if len(clicked_ranks) > 0:
-            cutoff = clicked_ranks[-1] + 1
-        else:
-            cutoff = self.cutoff
-
-        for d, c in zip(ranking[1:cutoff], clicks[1:cutoff]):
+        for d, c in zip(ranking[:self.cutoff], clicks[:self.cutoff]):
             self.C[d] += c
             self.N[d] += 1
-        
-        mus = self.C / self.N
-        cbs = np.sqrt(self.n_documents * self.T / self.N)
-        
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mus = np.nan_to_num(self.C / self.N)
+            cbs = np.sqrt(np.log(self.n_documents * self.T) / self.N)
+
         ucb = mus + cbs
         lcb = mus - cbs
         
-        k = 0
-        for ds in np.arrray_split(self.D, self.S):
-            k += len(ds)
-            
-            ################################################
-            # TODO: Find a (potential) split and add it to
-            #       self.S
-            ################################################
+        # The positions of old + new splits.
+        nextS = []
 
-            if k > K:
-                break
+        for ds, s in zip(np.array_split(self.D, self.S), np.r_[0, self.S]):
+            # We keep the old split positions.
+            nextS.append(s)
+            
+            # If the group consists of only a single document
+            # there is nothing to do.
+            if len(ds) == 1:
+                continue
+            
+            # Sort the documents within a group by their CTR estimates.
+            ds[:] = ds[np.argsort(mus[ds])[::-1]]
+            
+            # Sort the upper and lower confidence bounds as well.
+            group_ucb = ucb[ds]
+            group_lcb = lcb[ds]
+            
+            group_max_ucb = -np.ones_like(group_ucb)
+            group_min_lcb = +np.ones_like(group_lcb)
+
+            # Find the minimal LCB for consecutive documents
+            # from top to bottom.
+            group_min_lcb[0] = group_lcb[0]
+            for i in range(1, len(ds)):
+                group_min_lcb[i] = min(group_lcb[i],
+                                       group_min_lcb[i - 1])
+            
+            # Find the maximal UCB for consecutive documents
+            # from bottom to top.
+            group_max_ucb[-1] = group_ucb[-1]
+            for i in range(2, len(ds) + 1):
+                group_max_ucb[-i] = max(group_ucb[-i],
+                                        group_max_ucb[-(i - 1)])
+            
+            # See whether documents in the group cannot be
+            # split into smaller groups.
+            for i in range(1, len(ds)):
+                if group_min_lcb[i - 1] > group_max_ucb[i]:
+                    nextS.append(s + i)
+            
+        # Update the splits(omitting the 1st, which is
+        # just an auxiliary index).
+        self.S = np.array(nextS[1:], dtype='int32')
+            
+#         if self.t % 10000 == 0:
+#             print self.S
+#             print np.vstack([ucb[self.D], mus[self.D], lcb[self.D]])
+
         self.t += 1
         
 

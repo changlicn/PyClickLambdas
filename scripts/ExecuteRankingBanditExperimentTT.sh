@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'QuickRank' 'ShuffleAndSplit')
+ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
 OUTPUTDIR='experiments'
@@ -78,6 +78,24 @@ then
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
         python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} QuickRankAlgorithm ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
+    done
+    echo "Done: `date`"
+    echo "========================================"
+    echo
+fi
+
+# ============================================================================
+# MergeRank algorithm
+# ============================================================================
+if shouldRun 'MergeRank'
+then
+    echo "Running experiments for MergeRank"
+    echo "========================================"
+    for i in `seq 1`
+    do
+        echo "Run #${i} started: `date`"
+        mkdir -p ${OUTPUTDIR}/MergeRankAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} MergeRankAlgorithm ${OUTPUTDIR}/MergeRankAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
