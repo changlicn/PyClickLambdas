@@ -401,74 +401,92 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
         return 'QuickRank'
 
     def get_ranking(self, ranking):
-        # If only a single document has left in the active
-        # set of documents --> extend the ranking prefix
-        # and "go back" one stack frame, if there is any.
-        if len(self.D) == 1:
+        # If only a single document remained in the active
+        # set...
+        while len(self.D) == 1:
+            # ... extend the ranking prefix...
             self.R.append(self.D[0])
             
+             # ... "go back" one stack frame,
+            # if there is any, ...
             if len(self.stack) > 0:
                 self.D, self.K, self.D_f = self.stack.pop()
+                
+#                 print 'self.R =', self.R
+#                 print 'self.D =', self.D
+#                 print 'self.D_f =', self.D_f
+#                 print 'self.K =', self.K
+#                 print 'self.stack =', self.stack
+#                 print
             
                 self.v.fill(0)
                 self.n.fill(0)
-            
                 self.m = 0
                 self.N = 0
                 self.delta = 1.0
+            # ... otherwise, finish exploring.
             else:
                 self.finished = True
+                break
 
-        # If the time horizon was reached we present
-        # what ever ranking we ended up with.
+        # When the time horizon was reached or the documents
+        # were completely separated, we present what ever
+        # ranking we ended up with.
         if self.finished:
             ranking[:self.cutoff] = self.R[:self.cutoff]
             return                
-        
-        # While in m-th round...
+
+        # We proceed in rounds. In each round we show
+        # a randomized ranking...
         if self.m <= np.log2(self.T):
-            # present a raking with K randomly shuffled documents from
-            # the active set D...
-            if self.N <= 2 * np.log(self.T * len(self.D)) / self.delta**2:
-                r = np.concatenate([self.R,
-                                   self.random_state.choice(self.D, size=self.K, replace=False), 
-                                   self.D_f])
-                ranking[:self.cutoff] = r[:self.cutoff]
-                self.N += 1
-            else:
-                # ... and once a certain number of impressions (depending on
-                # the round) has been reach, compute documents' click-through
-                # rate.
+            # ... and once a certain number of impressions was made, we
+            # try to separate the documents into better and worse in terms
+            # of their click-through rate estimates.                
+            if self.N > 2 * np.log(self.T * len(self.D)) / self.delta**2:
+                # We proceed to the next round.
+                self.m += 1
+                self.delta /= 2.0
+                
+                # Once a certain number of impressions was reached (depending
+                # on the round), documents' click-through rate estimates are
+                # computed...
                 with np.errstate(invalid='ignore'):
                     mus = np.nan_to_num(self.v / self.n)[self.D]
                 
                 indices = np.argsort(mus)[::-1]
-    
-                mus = mus[indices]    
-                self.D = [self.D[i] for i in indices]
-            
-                self.delta /= 2.0
-                self.m += 1
+                
+                # ... and sorted in descending order...
+                mus = mus[indices]
+                # ... together with the corresponding documents.
+                self.D = [self.D[i] for i in indices]                
                 
                 # Finally, we try to find a split, which separates the documents
                 # into 2 groups - ones which are superior to the others as far
-                # as their relevance is concerned.
+                # as their click-through rate estimates are concerned.
                 s = -1
                 for i in range(1, len(self.D)):
                     if mus[i - 1] - self.delta > mus[i] + self.delta:
                         s = i
                 
-                # If we found the split...
+                # If we found a split position...
                 if s != -1:
                     # ... we create a new stack frame into which we postpone
                     # the processing of inferior documents from the active set
-                    # (only if needed).
+                    # (only if needed). This simulates the recursive nature
+                    # of the algorithm.
                     if s < self.K:
                         self.stack.append((self.D[s:], self.K - s, self.D_f[:]))
                     
                     self.D_f = self.D[s:] + self.D_f
                     self.D = self.D[:s]
-                    self.K = s
+                    self.K = min(self.K, s)
+                    
+#                     print 'self.R =', self.R
+#                     print 'self.D =', self.D
+#                     print 'self.D_f =', self.D_f
+#                     print 'self.K =', self.K
+#                     print 'self.stack =', self.stack
+#                     print
                     
                     self.v.fill(0)
                     self.n.fill(0)
@@ -476,6 +494,18 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
                     self.m = 0
                     self.N = 0
                     self.delta = 1.0
+
+            self.N += 1
+                    
+            # Concatenating the (already identified and hopefully optimal)
+            # ranking prefix with a random K-permutation of documents
+            # from the active set and (fixed) ranking of documents
+            # from the frozen set. 
+            ranking[:self.cutoff] = np.r_[self.R,
+                                          self.random_state.choice(self.D,
+                                                                   size=self.K,
+                                                                   replace=False),
+                                          self.D_f][:self.cutoff]
         else:
             self.finished = True
             
@@ -522,16 +552,15 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
     def get_ranking(self, ranking):
         if self.finished:
             ranking[:self.cutoff] = self.R[:self.cutoff]
+
+        # We proceed in rounds. In each round we show
+        # a randomized ranking...
         elif self.m <= np.log2(self.T):
-            # While in m-th round, present a ranking with randomly shuffled
-            # documents within each "relevance" group for certain number
-            # of impressions...
-            if self.N <= 2 * np.log(self.T * self.cutoff) / self.delta**2:
-                self.N += 1
-                for ds in np.array_split(self.R, self.S):
-                    self.random_state.shuffle(ds)
-                ranking[:self.cutoff] = self.R[:self.cutoff]
-            else:
+            # ... and once a certain number of impressions was made, we
+            # try to separate the documents into "relevance" groups 
+            # according to their click-through rate estimates.
+            if self.N > 2 * np.log(self.T * self.cutoff) / self.delta**2:
+                # We proceed to the next round.
                 self.m += 1
                 self.delta /= 2.0
                 
@@ -539,15 +568,13 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
                 # the next round.
                 nextS = []
                 
-                # ... and once that certain number of impressions (depending on
-                # the round) has been reached, compute documents' click-through
-                # rate...
+                # Compute documents' click-through rate estimates...
                 with np.errstate(invalid='ignore'):
                     mus = np.nan_to_num(self.v / self.n)[self.R]
                                 
-                # ... and based on the current confidence intervals, find out
-                # whether some of the document "relevance" group should not be
-                # split.
+                # ... and based on the current confidence intervals around them,
+                # find out whether some of the document "relevance" group should
+                # not be split.
                 for mus, offset in zip(np.array_split(mus, self.S), np.r_[0, self.S]):
                     # We keep the old split positions.
                     nextS.append(offset)
@@ -559,7 +586,7 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
                     
                     indices = np.argsort(mus)[::-1]
 
-                    # Sorted CTR estimates of documents within a group...
+                    # Sorted CTR estimates of documents within the group...
                     mus = mus[indices]  
                     # ... and the corresponding document indices.
                     ds = self.R[indices + offset]
@@ -576,6 +603,14 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
                 # Update the splits for the next round (omitting the 1st,
                 # which is just an auxiliary index).
                 self.S = np.array(nextS[1:], dtype='int32')
+            
+            self.N += 1
+            
+            for ds in np.array_split(self.R, self.S):
+                self.random_state.shuffle(ds)
+                
+            ranking[:self.cutoff] = self.R[:self.cutoff]
+
         else:
             self.finished = True
 

@@ -71,11 +71,11 @@ class RankingBanditExperiment(object):
 
             # Get a ranking based on the current state of the model...
             self.ranking_model.get_ranking(ranking=ranking)
-            
+
             # Just to make sure the algorithm always works
             # with documents for which we have got feedback.
             _ranking = ranking[:self.cutoff]
-            
+
             # if t % 10000 == 0:
             #     print t, _ranking
 
@@ -126,7 +126,7 @@ class RankingBanditExperiment(object):
             np.save(self.get_output_filepath(suffix='regret'), regret)
 
 
-def load_click_models(source='./data/model_query_collection.pkl'):
+def load_click_models(source):
     with open(source) as ifile:
         return pickle.load(ifile)
 
@@ -195,7 +195,8 @@ def parallel_helper(obj, methodname, *args, **kwargs):
 
 if __name__ == '__main__':
     # Load click models trained for selected queries.
-    MQD = load_click_models()
+    # MQD = load_click_models('./data/model_query_collection.pkl')
+    MQD = load_click_models('./data/model_query_collection_custom.pkl')
 
     kwargs = parse_command_line_arguments(MQD)
 
