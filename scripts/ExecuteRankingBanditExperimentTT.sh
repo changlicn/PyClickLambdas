@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
+ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'RankedUCB1Bandits' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
 OUTPUTDIR='experiments'
