@@ -195,8 +195,8 @@ def parallel_helper(obj, methodname, *args, **kwargs):
 
 if __name__ == '__main__':
     # Load click models trained for selected queries.
-    # MQD = load_click_models('./data/model_query_collection.pkl')
-    MQD = load_click_models('./data/model_query_collection_custom.pkl')
+    MQD = load_click_models('./data/model_query_collection.pkl')
+    # MQD = load_click_models('./data/model_query_collection_custom.pkl')
 
     kwargs = parse_command_line_arguments(MQD)
 

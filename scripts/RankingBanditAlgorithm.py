@@ -10,6 +10,7 @@ from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
 
 from rankbs import UCB1
+from rankbs import Exp3
 from rankbs import RelativeUCB1
 from rankbs import CascadeUCB1
 from rankbs import CascadeKL_UCB
@@ -666,9 +667,9 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
             self.n[d] += 1
 
 
-class RankedUCB1BanditsAlgorithm(BaseRankingBanditAlgorithm):
+class RankedBanditsUCB1Algorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
-        super(RankedUCB1BanditsAlgorithm, self).__init__(*args, **kwargs)
+        super(RankedBanditsUCB1Algorithm, self).__init__(*args, **kwargs)
         try:
             # Create one MAB for each rank.
             self.rankers = [UCB1(self.n_documents, alpha=kwargs['alpha'],
@@ -684,7 +685,7 @@ class RankedUCB1BanditsAlgorithm(BaseRankingBanditAlgorithm):
 
     @classmethod
     def update_parser(cls, parser):
-        super(RankedUCB1BanditsAlgorithm, cls).update_parser(parser)
+        super(RankedBanditsUCB1Algorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
 
@@ -693,7 +694,75 @@ class RankedUCB1BanditsAlgorithm(BaseRankingBanditAlgorithm):
         '''
         Returns the name of the algorithm.
         '''
-        return 'RankedUCB1Bandits'
+        return 'RankedBanditsUCB1'
+
+    def get_ranking(self, ranking):
+        D = set(range(self.n_documents))
+
+        if self.t < self.T: 
+            for r, ranker in enumerate(self.rankers):
+                self.__tmp_ranking[r] = ranker.get_arm()
+                
+                if self.__tmp_ranking[r] in ranking[:r]:
+                    ranking[r] = self.random_state.choice(list(D))
+                else:
+                    ranking[r] = self.__tmp_ranking[r]
+                
+                D.remove(ranking[r])
+        else:
+            for r, ranker in enumerate(self.rankers):
+                ranking[r] = ranker.get_arm()
+
+    def set_feedback(self, ranking, clicks):
+        if self.t < self.T:
+            clicked_ranks = clicks.nonzero()[0]
+
+            if len(clicked_ranks) > 0:
+                cutoff = clicked_ranks[-1] + 1
+            else:
+                cutoff = self.cutoff
+            
+            for d, dhat, c, ranker in zip(ranking[:cutoff], self.__tmp_ranking[:cutoff],
+                                          clicks, self.rankers[:cutoff]):
+                c = 1 if c and d == dhat else 0                    
+                ranker.update_arm(dhat, c)
+
+
+class RankedBanditsExp3Algorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(RankedBanditsExp3Algorithm, self).__init__(*args, **kwargs)
+        try:
+            self.t = 0
+            self.T = kwargs['n_impressions']
+            
+            # Create one MAB for each rank.
+            if kwargs['adaptive']:
+                self.rankers = [Exp3(self.n_documents,
+                                     random_state=self.random_state)
+                                for _ in range(self.cutoff)]
+            else:
+                self.rankers = [Exp3(self.n_documents, T=self.T,
+                                     random_state=self.random_state)
+                                for _ in range(self.cutoff)]
+                
+            self.__tmp_ranking = np.empty(self.cutoff, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RankedBanditsExp3Algorithm, cls).update_parser(parser)
+        parser.add_argument('-a', '--adaptive', action='store_true',
+                            help='if present the underlaying Exp3 models will not '
+                            'exploit the information about the number of impressions')
+
+    @classmethod
+    def getName(cls):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RankedBanditsExp3'
 
     def get_ranking(self, ranking):
         D = set(range(self.n_documents))

@@ -1,5 +1,6 @@
 from .bandits import UCB1
 from .bandits import KLUCB
+from .bandits import Exp3
 from .bandits import RelativeUCB1
 from .bandits import CascadeUCB1
 from .bandits import CascadeKL_UCB
@@ -15,6 +16,7 @@ except:
 __all__ = [
     'UCB1',
     'KLUCB',
+    'Exp3',
     'RelativeUCB1',
     'CascadeUCB1',
     'CascadeKL_UCB',

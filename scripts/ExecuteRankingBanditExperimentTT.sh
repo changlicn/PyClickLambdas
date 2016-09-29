@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'RankedUCB1Bandits' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
+ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'RankedBanditsUCB1' 'RankedBanditsExp3' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
 OUTPUTDIR='experiments'
@@ -103,20 +103,38 @@ then
 fi
 
 # ============================================================================
-# RankedUCB1Bandits algorithm
+# RankedBanditsUCB1 algorithm
 # ============================================================================
-if shouldRun 'RankedUCB1Bandits'
+if shouldRun 'RankedBanditsUCB1'
 then
-    echo "Running experiments for RankedUCB1Bandits"
-    echo "========================================"
+    echo "Running experiments for RankedBanditsUCB1"
+    echo "========================================="
     for i in `seq 1`
     do
         echo "Run #${i} started: `date`"
-        mkdir -p ${OUTPUTDIR}/RankedUCB1BanditsAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} RankedUCB1BanditsAlgorithm -a 0.51 ${OUTPUTDIR}/RankedUCB1BanditsAlgorithm/run${i}
+        mkdir -p ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} RankedBanditsUCB1Algorithm -a 0.51 ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
     done
     echo "Done: `date`"
-    echo "========================================"
+    echo "========================================="
+    echo
+fi
+
+# ============================================================================
+# RankedBanditsExp3 algorithm
+# ============================================================================
+if shouldRun 'RankedBanditsExp3'
+then
+    echo "Running experiments for RankedBanditsExp3"
+    echo "========================================="
+    for i in `seq 1`
+    do
+        echo "Run #${i} started: `date`"
+        mkdir -p ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n 10000000 -w 8 -c 5 -r -s ${i} RankedBanditsExp3Algorithm ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
+    done
+    echo "Done: `date`"
+    echo "========================================="
     echo
 fi
 

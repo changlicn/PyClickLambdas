@@ -92,16 +92,16 @@ cdef DOUBLE_t dKLdivergence(DOUBLE_t p, DOUBLE_t q) nogil:
     return -(1.0 * p / q) + (1.0 - p) / (1.0 - q)
 
 
-cdef inline DOUBLE_t logsumexp(DOUBLE_t *a, INT_t sz) nogil:
+cdef inline DOUBLE_t logsumexp(DOUBLE_t *a, INT_t sz, DOUBLE_t gamma=1.0) nogil:
     cdef INT_t    i
-    cdef DOUBLE_t sumexp = 0.0, amax = a[0]
+    cdef DOUBLE_t sumexp = 0.0, amax = gamma * a[0]
 
     for i in range(sz):
-        if amax < a[i]:
-            amax = a[i]
+        if amax < gamma * a[i]:
+            amax = gamma * a[i]
 
     for i in range(sz):
-        sumexp += exp(a[i] - amax)
+        sumexp += exp(gamma * a[i] - amax)
 
     return amax + log(sumexp)
 
@@ -313,6 +313,93 @@ cdef class KLUCB(object):
         '''
         self.S[index] += feedback
         self.N[index] += 1.0
+        self.t += 1
+
+
+cdef class Exp3(object):
+    cdef readonly INT_t     L
+    cdef readonly INT_t     t
+    cdef readonly INT_t     T
+    cdef DOUBLE_t*          S
+    cdef DOUBLE_t*          P
+    cdef readonly UINT_t    rand_r_state
+    
+    property estimates:
+        def __get__(self):
+            return __wrap_in_1d_double(self, self.L, self.S)
+    
+    def __cinit__(self, INT_t L, INT_t T=0, object random_state=None):
+        self.L = L
+        self.t = 1
+        self.T = T
+        self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        self.P = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
+        if random_state is None:
+            self.rand_r_state = np.random.randint(1, RAND_R_MAX)
+        else:
+            self.rand_r_state = random_state.randint(1, RAND_R_MAX)
+
+    def __dealloc__(self):
+        free(self.S)
+        free(self.P)
+
+    def __reduce__(self):
+        ''' 
+        Reduce reimplementation, for pickling.
+        '''
+        return (Exp3, (self.L, self.T), self.__getstate__())
+
+    def __setstate__(self, d):
+        self.t = d['t']
+        memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
+        memcpy(self.P, (<np.ndarray> d['P']).data, self.L * sizeof(DOUBLE_t))
+        self.rand_r_state = d['rand_r_state']
+
+    def __getstate__(self):
+        d = {}
+        d['t'] = self.t
+        d['S'] = __wrap_in_1d_double(self, self.L, self.S)
+        d['P'] = __wrap_in_1d_double(self, self.L, self.P)
+        d['rand_r_state'] = self.rand_r_state
+        return d
+
+    def get_arm(self):
+        ''' 
+        Returns an arm that should be pulled in the next round.
+
+        Parameters
+        ----------
+        arm:
+            The index of the arm to pull.
+        '''
+        cdef INT_t i
+        cdef DOUBLE_t gamma, Z
+        
+        if self.T <= 0:
+            gamma = sqrt(log(self.L) / (self.t * self.L))
+        else:
+            gamma = sqrt(2 * log(self.L) / (self.T * self.L))
+        
+        Z = logsumexp(self.S, self.L, -gamma)
+        
+        for i in range(self.L):
+            self.P[i] = exp(-gamma * self.S[i] - Z)
+
+        return rand_choice(self.P, self.L, &self.rand_r_state)
+
+    def update_arm(self, INT_t index, INT_t feedback):
+        ''' 
+        Update the arm using the specified feedback.
+
+        Parameters
+        ----------
+        index : int
+            The index of the arm to update
+
+        feedback : int
+            The 0/1 feedback.
+        '''
+        self.S[index] += (1 - feedback) / self.P[index]
         self.t += 1
 
 
