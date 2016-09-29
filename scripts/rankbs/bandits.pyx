@@ -24,12 +24,37 @@ cdef DOUBLE_t DOUBLE_EPSILON = np.finfo('float64').resolution
 
 cdef enum:
     RAND_R_MAX = 0x7FFFFFFF # alias 2**31 - 1
+    FIRSTCLICK_FEEDBACK = 1
+    LASTCLICK_FEEDBACK = 2
+    FULL_FEEDBACK = 3
 
 
 cdef struct UCB_info_t:
     DOUBLE_t ucb
     INT_t    nonce
     INT_t    index
+
+
+cdef INT_t str2fb(str feedback):
+    if feedback == 'fc':
+        return FIRSTCLICK_FEEDBACK
+    elif feedback == 'lc':
+        return LASTCLICK_FEEDBACK
+    elif feedback == 'ff':
+        return FULL_FEEDBACK
+    else:
+        raise ValueError("illegal feedback value: %s, supported values are: 'fc', 'lc', 'ff'" % feedback)
+
+
+cdef str fb2str(UINT_t feedback):
+    if feedback == FIRSTCLICK_FEEDBACK:
+        return 'fc'
+    elif feedback == LASTCLICK_FEEDBACK:
+        return 'lc'
+    elif feedback == FULL_FEEDBACK:
+        return 'ff'
+    else:
+        raise ValueError('illegal feedback value')
 
 
 cdef np.ndarray __wrap_in_1d_double(object base, np.intp_t shape, DOUBLE_t * values):
@@ -518,7 +543,7 @@ cdef class CascadeUCB1(object):
     cdef DOUBLE_t*          N
     cdef UCB_info_t*        U
     cdef readonly DOUBLE_t  alpha
-    cdef readonly bint      first_click
+    cdef readonly INT_t     feedback
     cdef readonly UINT_t    rand_r_state
 
     property wins:
@@ -533,14 +558,14 @@ cdef class CascadeUCB1(object):
         def __get__(self):
             return self.wins / self.pulls
     
-    def __cinit__(self, INT_t L, DOUBLE_t alpha=1.5, bint first_click=True, object random_state=None):
+    def __cinit__(self, INT_t L, DOUBLE_t alpha=1.5, str feedback='fc', object random_state=None):
         self.L = L
         self.t = 0
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
-        self.alpha = alpha
-        self.first_click = first_click
+        self.alpha = alpha            
+        self.feedback = str2fb(feedback)
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
         else:
@@ -555,7 +580,7 @@ cdef class CascadeUCB1(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeUCB1, (self.L, self.alpha, self.first_click), self.__getstate__())
+        return (CascadeUCB1, (self.L, self.alpha, fb2str(self.feedback)), self.__getstate__())
 
     def __setstate__(self, d):
         self.t = d['t']
@@ -627,12 +652,17 @@ cdef class CascadeUCB1(object):
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
 
-        for i in range(clicks.size):
-            if clicks[i] == 1:
-                last_i = i
-                if self.first_click:
+        if self.feedback == FIRSTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
                     break
-        
+
+        elif self.feedback == LASTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
+
         self.t += 1
         for i in range(last_i + 1):
             self.S[ranking[i]] += clicks[i]
@@ -645,7 +675,7 @@ cdef class CascadeKL_UCB(object):
     cdef DOUBLE_t*          S
     cdef DOUBLE_t*          N
     cdef UCB_info_t*        U
-    cdef readonly bint      first_click
+    cdef readonly INT_t     feedback
     cdef readonly UINT_t    rand_r_state
 
     property wins:
@@ -660,13 +690,13 @@ cdef class CascadeKL_UCB(object):
         def __get__(self):
             return self.wins / self.pulls
     
-    def __cinit__(self, INT_t L, first_click=True, object random_state=None):
+    def __cinit__(self, INT_t L, str feedback='fc', object random_state=None):
         self.L = L
         self.t = 0
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.N = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
-        self.first_click = first_click
+        self.feedback = str2fb(feedback)
         if random_state is None:
             self.rand_r_state = np.random.randint(1, RAND_R_MAX)
         else:
@@ -681,7 +711,7 @@ cdef class CascadeKL_UCB(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeKL_UCB, (self.L, self.first_click), self.__getstate__())
+        return (CascadeKL_UCB, (self.L, fb2str(self.feedback)), self.__getstate__())
 
     def __setstate__(self, d):
         self.t = d['t']
@@ -800,11 +830,16 @@ cdef class CascadeKL_UCB(object):
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
 
-        for i in range(clicks.size):
-            if clicks[i] == 1:
-                last_i = i
-                if self.first_click:
+        if self.feedback == FIRSTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
                     break
+
+        elif self.feedback == LASTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
         
         self.t += 1
         for i in range(last_i + 1):
@@ -960,6 +995,7 @@ cdef class CascadeThompsonSampler(object):
     cdef readonly DOUBLE_t  alpha
     cdef readonly DOUBLE_t  beta
     cdef readonly INT_t     I
+    cdef readonly INT_t     feedback
     cdef readonly object    random_state
 
     property wins:
@@ -974,7 +1010,7 @@ cdef class CascadeThompsonSampler(object):
         def __get__(self):
             return self.wins / self.pulls
     
-    def __cinit__(self, L, alpha=1.0, beta=1.0, random_state=None):
+    def __cinit__(self, L, alpha=1.0, beta=1.0, feedback='fc', random_state=None):
         cdef INT_t i
         self.L = L
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
@@ -986,6 +1022,7 @@ cdef class CascadeThompsonSampler(object):
         self.U = <UCB_info_t*> malloc(self.L * sizeof(UCB_info_t))
         self.alpha = alpha
         self.beta = beta
+        self.feedback = str2fb(feedback)
         if random_state is None:
             self.random_state = np.random.RandomState(np.random.randint(1, RAND_R_MAX))
         else:
@@ -1000,7 +1037,7 @@ cdef class CascadeThompsonSampler(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeThompsonSampler, (self.L, self.alpha, self.beta), self.__getstate__())
+        return (CascadeThompsonSampler, (self.L, self.alpha, self.beta, fb2str(self.feedback)), self.__getstate__())
 
     def __setstate__(self, d):
         memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
@@ -1055,16 +1092,27 @@ cdef class CascadeThompsonSampler(object):
         clicks : array of ints
             The binary indicator array marking the ranks that received
             a click from the user.
-        '''
-        cdef INT_t i
+        '''        
+        cdef INT_t i, last_i = clicks.size - 1
 
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
+
+        if self.feedback == FIRSTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
+                    break
+
+        elif self.feedback == LASTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
         
-        for i in range(clicks.shape[0]):
+        self.t += 1
+        for i in range(last_i + 1):
             self.S[ranking[i]] += clicks[i]
             self.N[ranking[i]] += 1.0
-            if clicks[i] == 1: break;
 
 
 cdef class CascadeExp3(object):
@@ -1075,18 +1123,20 @@ cdef class CascadeExp3(object):
     cdef INT_t*             D
     cdef DOUBLE_t*          C
     cdef readonly DOUBLE_t  gamma
+    cdef readonly INT_t     feedback
     cdef readonly UINT_t    rand_r_state
 
     property means:
         def __get__(self):
             return __wrap_in_1d_double(self, self.L, self.S)
     
-    def __cinit__(self, L, gamma=0.01, random_state=None):
+    def __cinit__(self, L, gamma=0.01, feedback='fc', random_state=None):
         self.S = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.P = <DOUBLE_t*> calloc(L, sizeof(DOUBLE_t))
         self.L = L
         self.t = 0
         self.gamma = gamma
+        self.feedback = str2fb(feedback)
         self.D = <INT_t*> malloc(self.L * sizeof(INT_t))
         self.C = <DOUBLE_t*> malloc(self.L * sizeof(DOUBLE_t))
         if random_state is None:
@@ -1104,7 +1154,7 @@ cdef class CascadeExp3(object):
         ''' 
         Reduce reimplementation, for pickling.
         '''
-        return (CascadeExp3, (self.L, self.gamma), self.__getstate__())
+        return (CascadeExp3, (self.L, self.gamma, fb2str(self.feedback)), self.__getstate__())
 
     def __setstate__(self, d):
         memcpy(self.S, (<np.ndarray> d['S']).data, self.L * sizeof(DOUBLE_t))
@@ -1176,18 +1226,21 @@ cdef class CascadeExp3(object):
             The binary indicator array marking the ranks that received
             a click from the user.
         '''
-        cdef INT_t i
+        cdef INT_t i, last_i = clicks.size - 1
 
         if ranking.size < clicks.size:
             raise ValueError('clicks array size cannot be larger than ranking array size')
 
-        if not clicks.any():
-            return
+        if self.feedback == FIRSTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
+                    break
 
-        for i in range(clicks.shape[0]):
-            if clicks[i]:
-                self.S[ranking[i]] += self.gamma / (self.L - i) / self.P[i]
+        elif self.feedback == LASTCLICK_FEEDBACK:
+            for i in range(clicks.size):
+                if clicks[i] == 1:
+                    last_i = i
 
-        # for i in range(clicks.shape[0]):
-        #     if clicks[i]: break
-        #     self.S[ranking[i]] -= self.gamma / (self.L - i) / self.P[i]
+        for i in range(last_i + 1):
+            self.S[ranking[i]] += self.gamma / (self.L - i) / self.P[i]

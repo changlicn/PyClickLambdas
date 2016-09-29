@@ -53,13 +53,12 @@ class BaseRankingBanditAlgorithm(object):
         '''
         pass
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
-        Returns the name of the algorithm. Defaults to the class name if not
-        overriden in the extended classes.
+        Returns the name of the algorithm. This method must be implemented
+        in the derived classes.
         '''
-        return cls.__name__
+        raise NotImplementedError()
 
     def get_ranking(self, ranking):
         '''
@@ -125,8 +124,7 @@ class UniformRankingAlgorithm(BaseRankingBanditAlgorithm):
                                                      dtype='float64'),
                                             random_state=self.random_state)
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -150,8 +148,7 @@ class SoftmaxRakingAlgorithm(BaseRankingBanditAlgorithm):
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -167,7 +164,9 @@ class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         super(CascadeUCB1Algorithm, self).__init__(*args, **kwargs)
         try:
             self.ranker = CascadeUCB1(self.n_documents, alpha=kwargs['alpha'],
+                                      feedback=kwargs['feedback'],
                                       random_state=self.random_state)
+            self.feedback = kwargs['feedback']
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -176,13 +175,16 @@ class CascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         super(CascadeUCB1Algorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=1.5,
                             required=True, help='alpha parameter')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'CascadeUCB1'
+        return 'CascadeUCB1' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
@@ -195,15 +197,23 @@ class CascadeKLUCBAlgorithm(BaseRankingBanditAlgorithm):
 
     def __init__(self, *args, **kwargs):
         super(CascadeKLUCBAlgorithm, self).__init__(*args, **kwargs)
-        self.ranker = CascadeKL_UCB(self.n_documents,
+        self.ranker = CascadeKL_UCB(self.n_documents, feedback=kwargs['feedback'],
                                     random_state=self.random_state)
-
+        self.feedback = kwargs['feedback']
+    
     @classmethod
-    def getName(cls):
+    def update_parser(cls, parser):
+        super(CascadeKLUCBAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'CascadeKL-UCB'
+        return 'CascadeKL-UCB' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
@@ -232,8 +242,7 @@ class CascadeLambdaMachineAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-s', '--sigma', type=float, default=1.0,
                             required=True, help='sigma parameter')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -254,7 +263,9 @@ class CascadeThompsonSamplerAlgorithm(BaseRankingBanditAlgorithm):
             self.ranker = CascadeThompsonSampler(self.n_documents,
                                                  alpha=kwargs['alpha'],
                                                  beta=kwargs['beta'],
+                                                 feedback=kwargs['feedback'],
                                                  random_state=self.random_state)
+            self.feedback = kwargs['feedback']
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -265,13 +276,16 @@ class CascadeThompsonSamplerAlgorithm(BaseRankingBanditAlgorithm):
                             required=True, help='alpha parameter')
         parser.add_argument('-b', '--beta', type=float, default=1.0,
                             required=True, help='alpha parameter')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'CascadeThompsonSampler'
+        return 'CascadeThompsonSampler' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
@@ -286,7 +300,9 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         super(CascadeExp3Algorithm, self).__init__(*args, **kwargs)
         try:
             self.ranker = CascadeExp3(self.n_documents, gamma=kwargs['gamma'],
+                                      feedback=kwargs['feedback'],
                                       random_state=self.random_state)
+            self.feedback = kwargs['feedback']
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
 
@@ -295,13 +311,16 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         super(CascadeExp3Algorithm, cls).update_parser(parser)
         parser.add_argument('-g', '--gamma', type=float, default=0.01,
                             required=True, help='gamma parameter')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'CascadeExp3'
+        return 'CascadeExp3' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         self.ranker.get_ranking(ranking)
@@ -320,16 +339,24 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
             self.S = []
             self.t = 0
             self.T = kwargs['n_impressions']
+            self.feedback = kwargs['feedback']
             np.set_printoptions(linewidth=np.inf)
         except KeyError as e:
             raise ValueError('missing %s argument' % e)
-
+    
     @classmethod
-    def getName(cls):
+    def update_parser(cls, parser):
+        super(MergeRankAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'MergeRank'
+        return 'MergeRank' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         if self.t < self.T:
@@ -338,7 +365,19 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         ranking[:self.cutoff] = self.D[:self.cutoff]
 
     def set_feedback(self, ranking, clicks):
-        for d, c in zip(ranking[:self.cutoff], clicks[:self.cutoff]):
+        cutoff = self.cutoff
+        
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
+            
+        for d, c in zip(ranking[:cutoff], clicks[:cutoff]):
             self.C[d] += c
             self.N[d] += 1
 
@@ -408,6 +447,7 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
 
         try:
             self.T = kwargs['n_impressions']
+            self.feedback = kwargs['feedback']
             
             self.D = range(self.n_documents)
             self.K = self.cutoff
@@ -427,11 +467,18 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
             raise ValueError('missing %s argument' % e)
 
     @classmethod
-    def getName(cls):
+    def update_parser(cls, parser):
+        super(QuickRankAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'QuickRank'
+        return 'QuickRank' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         # If only a single document remained in the active
@@ -444,7 +491,7 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
             # if there is any, ...
             if len(self.stack) > 0:
                 self.D, self.K, self.D_f = self.stack.pop()
-                
+
 #                 print 'self.R =', self.R
 #                 print 'self.D =', self.D
 #                 print 'self.D_f =', self.D_f
@@ -552,7 +599,19 @@ class QuickRankAlgorithm(BaseRankingBanditAlgorithm):
 
 
     def set_feedback(self, ranking, clicks):
-        for d, c in zip(ranking[len(self.R):self.cutoff], clicks[len(self.R):self.cutoff]):
+        cutoff = self.cutoff
+        
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
+
+        for d, c in zip(ranking[len(self.R):cutoff], clicks[len(self.R):cutoff]):
             self.v[d] += c
             self.n[d] += 1
 
@@ -566,6 +625,7 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
             self.v = np.zeros(self.n_documents, dtype='float64')
             self.n = np.zeros(self.n_documents, dtype='float64')
             self.T = kwargs['n_impressions']
+            self.feedback = kwargs['feedback']
             self.m = 0
             self.N = 0
             self.delta = 1.0
@@ -576,11 +636,18 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
             raise ValueError('missing %s argument' % e)
 
     @classmethod
-    def getName(cls):
+    def update_parser(cls, parser):
+        super(ShuffleAndSplitAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'ShuffleAndSplit'
+        return 'ShuffleAndSplit' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         if self.finished:
@@ -662,7 +729,19 @@ class ShuffleAndSplitAlgorithm(BaseRankingBanditAlgorithm):
             self.R[:] = final_ranking
 
     def set_feedback(self, ranking, clicks):
-        for d, c in zip(ranking[:self.cutoff], clicks[:self.cutoff]):
+        cutoff = self.cutoff
+        
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
+                
+        for d, c in zip(ranking[:cutoff], clicks[:cutoff]):
             self.v[d] += c
             self.n[d] += 1
 
@@ -673,11 +752,11 @@ class RankedBanditsUCB1Algorithm(BaseRankingBanditAlgorithm):
         try:
             # Create one MAB for each rank.
             self.rankers = [UCB1(self.n_documents, alpha=kwargs['alpha'],
-                                         random_state=self.random_state)
+                                 random_state=self.random_state)
                             for _ in range(self.cutoff)]
             self.t = 0
             self.T = kwargs['n_impressions']
-            
+            self.feedback = kwargs['feedback']
             self.__tmp_ranking = np.empty(self.cutoff, dtype='int32')
 
         except KeyError as e:
@@ -688,13 +767,16 @@ class RankedBanditsUCB1Algorithm(BaseRankingBanditAlgorithm):
         super(RankedBanditsUCB1Algorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='ff', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'RankedBanditsUCB1'
+        return 'RankedBanditsUCB1' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         D = set(range(self.n_documents))
@@ -715,12 +797,17 @@ class RankedBanditsUCB1Algorithm(BaseRankingBanditAlgorithm):
 
     def set_feedback(self, ranking, clicks):
         if self.t < self.T:
-            clicked_ranks = clicks.nonzero()[0]
+            cutoff = self.cutoff
+        
+            if self.feedback == 'fc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[0] + 1
 
-            if len(clicked_ranks) > 0:
-                cutoff = clicked_ranks[-1] + 1
-            else:
-                cutoff = self.cutoff
+            elif self.feedback == 'lc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[-1] + 1
             
             for d, dhat, c, ranker in zip(ranking[:cutoff], self.__tmp_ranking[:cutoff],
                                           clicks, self.rankers[:cutoff]):
@@ -734,7 +821,7 @@ class RankedBanditsExp3Algorithm(BaseRankingBanditAlgorithm):
         try:
             self.t = 0
             self.T = kwargs['n_impressions']
-            
+            self.feedback = kwargs['feedback']
             # Create one MAB for each rank.
             if kwargs['adaptive']:
                 self.rankers = [Exp3(self.n_documents,
@@ -756,13 +843,16 @@ class RankedBanditsExp3Algorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-a', '--adaptive', action='store_true',
                             help='if present the underlaying Exp3 models will not '
                             'exploit the information about the number of impressions')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='ff', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'RankedBanditsExp3'
+        return 'RankedBanditsExp3' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         D = set(range(self.n_documents))
@@ -783,12 +873,17 @@ class RankedBanditsExp3Algorithm(BaseRankingBanditAlgorithm):
 
     def set_feedback(self, ranking, clicks):
         if self.t < self.T:
-            clicked_ranks = clicks.nonzero()[0]
+            cutoff = self.cutoff
+        
+            if self.feedback == 'fc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[0] + 1
 
-            if len(clicked_ranks) > 0:
-                cutoff = clicked_ranks[-1] + 1
-            else:
-                cutoff = self.cutoff
+            elif self.feedback == 'lc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[-1] + 1
             
             for d, dhat, c, ranker in zip(ranking[:cutoff], self.__tmp_ranking[:cutoff],
                                           clicks, self.rankers[:cutoff]):
@@ -809,7 +904,7 @@ class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
             self.rankers = [RelativeUCB1(self.n_documents - 1, alpha=kwargs['alpha'],
                                          random_state=self.random_state)
                             for _ in range(self.n_documents)]
-            
+            self.feedback = kwargs['feedback']
             self.__tmp_rankings = np.empty(self.n_documents - 1, dtype='int32')
 
         except KeyError as e:
@@ -820,13 +915,16 @@ class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         super(RelativeCascadeUCB1Algorithm, cls).update_parser(parser)
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='ff', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
-        return 'RelativeCascadeUCB1Algorithm'
+        return 'RelativeCascadeUCB1Algorithm' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         # Sample a document at the highest rank...
@@ -849,12 +947,17 @@ class RelativeCascadeUCB1Algorithm(BaseRankingBanditAlgorithm):
         self.top_ranker.set_feedback(ranking[0], clicks[0])
         prev_d = ranking[0]
 
-        clicked_ranks = clicks.nonzero()[0]
+        cutoff = self.cutoff
         
-        if len(clicked_ranks) > 0:
-            cutoff = clicked_ranks[-1] + 1
-        else:
-            cutoff = self.cutoff
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
 
         for curr_d, c in zip(ranking[1:cutoff], clicks[1:cutoff]):
             # Pick the ranker associated with the document ranked above
@@ -918,8 +1021,7 @@ class RelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
                             ' only when `ucb` or `kl-ucb` is used for ranking '
                             'preselection)')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -1293,8 +1395,7 @@ class RelativeRankingAlgorithmV1_TooSlow(BaseLambdasRankingBanditAlgorithm):
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -1475,8 +1576,7 @@ class CoarseRelativeRankingAlgorithm(BaseLambdasRankingBanditAlgorithm):
         parser.add_argument('-a', '--alpha', type=float, default=0.51,
                             required=True, help='alpha parameter')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -1669,8 +1769,7 @@ class RankingBanditsGangAlgorithm(BaseRankingBanditAlgorithm):
                             required=False, help='consider feedback up to '
                             'the last click instead of the first (default)')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
@@ -1764,8 +1863,7 @@ class StackedRankingBanditsAlgorithm(BaseRankingBanditAlgorithm):
                             'the first click instead of the whole feedback list '
                             '(default)')
 
-    @classmethod
-    def getName(cls):
+    def getName(self):
         '''
         Returns the name of the algorithm.
         '''
