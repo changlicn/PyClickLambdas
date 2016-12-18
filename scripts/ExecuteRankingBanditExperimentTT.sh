@@ -4,7 +4,7 @@
 ALGORITHMS=('CascadeUCB1' 'CascadeKL-UCB' 'RelativeCascadeUCB1' 'RankedBanditsUCB1' 'RankedBanditsExp3' 'QuickRank' 'MergeRank' 'ShuffleAndSplit')
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
-OUTPUTDIR='experiments'
+OUTPUTDIR='experiments/yandex/ff'
 NIMPRESSIONS=10000000
 
 function shouldRun() { local i; for i in ${ALGORITHMS[@]}; do [[ "$i" == "$1" ]] && return 0; done; return 1; }
@@ -24,7 +24,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/CascadeUCB1Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} CascadeUCB1Algorithm -a 0.51 ${OUTPUTDIR}/CascadeUCB1Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} CascadeUCB1Algorithm -a 0.51 -f 'ff' ${OUTPUTDIR}/CascadeUCB1Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -42,7 +42,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} CascadeKLUCBAlgorithm ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} CascadeKLUCBAlgorithm -f 'ff' ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -60,7 +60,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RelativeCascadeUCB1Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RelativeCascadeUCB1Algorithm -a 0.51 ${OUTPUTDIR}/RelativeCascadeUCB1Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RelativeCascadeUCB1Algorithm -a 0.51 -f 'ff' ${OUTPUTDIR}/RelativeCascadeUCB1Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -78,7 +78,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} QuickRankAlgorithm ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} QuickRankAlgorithm -f 'ff' ${OUTPUTDIR}/QuickRankAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -96,7 +96,25 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/MergeRankAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} MergeRankAlgorithm ${OUTPUTDIR}/MergeRankAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} MergeRankAlgorithm -f 'ff' ${OUTPUTDIR}/MergeRankAlgorithm/run${i}
+    done
+    echo "Done: `date`"
+    echo "========================================"
+    echo
+fi
+
+# ============================================================================
+# MergeRankKL algorithm
+# ============================================================================
+if shouldRun 'MergeRankKL'
+then
+    echo "Running experiments for MergeRankKL"
+    echo "========================================"
+    for i in `seq 1`
+    do
+        echo "Run #${i} started: `date`"
+        mkdir -p ${OUTPUTDIR}/MergeRankKLAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} MergeRankAlgorithm -m 'kl' -f 'ff' ${OUTPUTDIR}/MergeRankKLAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -114,7 +132,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RankedBanditsUCB1Algorithm -a 0.51 ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RankedBanditsUCB1Algorithm -a 0.51 -f 'ff' ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================="
@@ -132,7 +150,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RankedBanditsExp3Algorithm ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} RankedBanditsExp3Algorithm -f 'ff' ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================="
@@ -150,7 +168,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/ShuffleAndSplitAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} ShuffleAndSplitAlgorithm ${OUTPUTDIR}/ShuffleAndSplitAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -q all -m all -n ${NIMPRESSIONS} -w 8 -c 5 -r -s ${i} ShuffleAndSplitAlgorithm -f 'ff' ${OUTPUTDIR}/ShuffleAndSplitAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"

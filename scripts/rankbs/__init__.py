@@ -8,6 +8,9 @@ from .bandits import CascadeThompsonSampler
 from .bandits import CascadeLambdaMachine
 from .bandits import CascadeExp3
 
+from .bandits import get_kl_ucb
+from .bandits import get_kl_lcb
+
 try:
     __version__ = __import__('pkg_resources').get_distribution('rankbs').version
 except:

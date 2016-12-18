@@ -131,6 +131,46 @@ cdef inline DOUBLE_t logsumexp(DOUBLE_t *a, INT_t sz, DOUBLE_t gamma=1.0) nogil:
     return amax + log(sumexp)
 
 
+cpdef DOUBLE_t get_kl_ucb(DOUBLE_t p, DOUBLE_t e) nogil:
+    '''
+    Find q = argmax{q in [p, 1]: KL(p, q) <= e}.
+    '''
+    cdef DOUBLE_t kld, q, prev_q
+
+    p = p if p < (1 - 2 * DOUBLE_EPSILON) else (1 - 2 * DOUBLE_EPSILON)
+    p = p if p > DOUBLE_EPSILON else DOUBLE_EPSILON
+
+    prev_q = (1 + DOUBLE_EPSILON)
+    q = (1 - DOUBLE_EPSILON)
+
+    if KLdivergence(p, q) > e:
+        while (prev_q - q) > DOUBLE_EPSILON:
+            prev_q = q
+            q += (e - KLdivergence(p, q)) / dKLdivergence(p, q)
+
+    return q
+
+
+cpdef DOUBLE_t get_kl_lcb(DOUBLE_t p, DOUBLE_t e) nogil:
+    '''
+    Find q = argmax{q in [0, p]: KL(p, q) <= e}.
+    '''
+    cdef DOUBLE_t kld, q, prev_q
+
+    p = p if p < (1 - 2 * DOUBLE_EPSILON) else (1 - 2 * DOUBLE_EPSILON)
+    p = p if p > DOUBLE_EPSILON else DOUBLE_EPSILON
+
+    prev_q = -DOUBLE_EPSILON
+    q = DOUBLE_EPSILON
+
+    if KLdivergence(p, q) > e:
+        while (q - prev_q) > DOUBLE_EPSILON:
+            prev_q = q
+            q += (e - KLdivergence(p, q)) / dKLdivergence(p, q)
+
+    return q
+
+
 cdef class UCB1(object):
     cdef readonly INT_t     L
     cdef readonly INT_t     t

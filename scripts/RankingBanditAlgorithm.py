@@ -18,6 +18,14 @@ from rankbs import CascadeLambdaMachine
 from rankbs import CascadeThompsonSampler
 from rankbs import CascadeExp3
 
+from rankbs import get_kl_ucb
+from rankbs import get_kl_lcb
+
+
+# To avoid for-loops we vectorize these:
+get_kl_ucb = np.vectorize(get_kl_ucb)
+get_kl_lcb = np.vectorize(get_kl_lcb)
+
 
 def get_available_algorithms():
     algorithms = []
@@ -339,6 +347,7 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
             self.S = []
             self.t = 0
             self.T = kwargs['n_impressions']
+            self.use_kl = (kwargs['method'] == 'kl')
             self.feedback = kwargs['feedback']
             np.set_printoptions(linewidth=np.inf)
         except KeyError as e:
@@ -347,6 +356,9 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
     @classmethod
     def update_parser(cls, parser):
         super(MergeRankAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-m', '--method', choices=['ch', 'kl'], required=False,
+                            default='ch', help='specify type of confidence bounds used '
+                           'by the ranking algorithm')
         parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
                             default='lc', required=False, help='specify the way the click feedback '
                             'is processed - fc: down to the first click, lc: down to '
@@ -356,7 +368,8 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         '''
         Returns the name of the algorithm.
         '''
-        return 'MergeRank' + ('[' + self.feedback.upper() + ']')
+        return ('MergeRank' + ('KL' if getattr(self, 'use_kl', False) else '') 
+                            + ('[' + self.feedback.upper() + ']'))
 
     def get_ranking(self, ranking):
         if self.t < self.T:
@@ -383,11 +396,16 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
 
         with np.errstate(divide='ignore', invalid='ignore'):
             mus = np.nan_to_num(self.C / self.N)
-            cbs = np.sqrt(np.log(self.n_documents * self.T) / self.N)
+            cnf = np.log(self.n_documents * self.T) / self.N
 
-        ucb = mus + cbs
-        lcb = mus - cbs
-        
+        if self.use_kl: # use Kullback-Leibler bounds
+            ucb = get_kl_ucb(mus, cnf)
+            lcb = get_kl_lcb(mus, cnf) 
+        else: # use Chernoff-Hoeffding bounds
+            cbs = np.sqrt(cnf)
+            ucb = mus + cbs
+            lcb = mus - cbs
+
         # The positions of old + new splits.
         nextS = []
 
