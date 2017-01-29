@@ -10,6 +10,7 @@ from samplers import UniformRankingSampler
 from samplers import SoftmaxRankingSampler
 
 from rankbs import UCB1
+from rankbs import KLUCB
 from rankbs import Exp3
 from rankbs import RelativeUCB1
 from rankbs import CascadeUCB1
@@ -336,7 +337,205 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
     def set_feedback(self, ranking, clicks):
         self.ranker.set_feedback(ranking, clicks)
 
+
+
+class RealMergeRankAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(RealMergeRankAlgorithm, self).__init__(*args, **kwargs)
+
+        try:
+            self.D = np.arange(self.n_documents, dtype='int32')
+            self.C = np.zeros(self.n_documents, dtype='float64')
+            self.N = np.zeros(self.n_documents, dtype='float64')
+            self.S = []
+            self.t = 0
+            self.T = kwargs['n_impressions']
+            self.use_kl = (kwargs['method'] == 'kl')
+            self.clear = kwargs['clear']
+            self.deltas = [0.5]
+            self.feedback = kwargs['feedback']
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+    
+    @classmethod
+    def update_parser(cls, parser):
+        super(RealMergeRankAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-m', '--method', choices=['ch', 'kl'], required=False,
+                            default='ch', help='specify type of confidence bounds used '
+                           'by the ranking algorithm')
+        parser.add_argument('-c', '--clear', action='store_true', help='indicates whether '
+                            'the acumulate clicks and views should be cleared after a split '
+                            'is made')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='lc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return ('RealMergeRank' + ('Zero' if self.clear else '')
+                                + ('KL' if self.use_kl else '')
+                                + ('[' + self.feedback.upper() + ']'))
+
+    def get_ranking(self, ranking):
+        if self.t < self.T:
+            # Shuffle the documents in each bucket uniformly at random.
+            for ds in np.array_split(self.D, self.S):
+                self.random_state.shuffle(ds)
+        # Return the top-`cutoff` documents.
+        ranking[:self.cutoff] = self.D[:self.cutoff]
+
+    def set_feedback(self, ranking, clicks):
+        # Sets cutoff for full feedback.
+        cutoff = self.cutoff
         
+        # Sets cutoff for first click feedback.
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        # Sets cutoff for last click feedback.
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
+        
+        # Update the click and view counters for the most
+        # recent impression.
+        for d, c in zip(ranking[:cutoff], clicks[:cutoff]):
+            self.C[d] += c
+            self.N[d] += 1
+
+        # The positions of old + new splits.
+        nextS = []
+
+        # The new deltas.
+        nextDeltas = []
+
+        # Lower-bound on the minimum number of impressions for each document.
+        logDT = np.log(self.n_documents * self.T)
+
+        for ds, s, delta in zip(np.array_split(self.D, self.S), np.r_[0, self.S], self.deltas):
+            # We keep the old split positions.
+            nextS.append(s)
+            
+            # If the group consists of only a single document or not all
+            # documents in it were shown sufficiently often, than nothing
+            # happens.
+            
+            if len(ds) == 1 or (self.N[ds] < logDT / delta**2).any():
+                # Keep the old delta.
+                nextDeltas.append(delta)
+                continue
+            
+            # ========================================================
+            # UpdateBatch 'sub-routine' starts here.
+            # ========================================================
+
+            reset_counters = False
+
+            # Compute the lower and upper confidence bounds for each
+            # document in the group.
+            mus = self.C[ds] / self.N[ds]
+            cnf = logDT / self.N[ds]
+
+            if self.use_kl: # use Kullback-Leibler bounds
+                ucb = get_kl_ucb(mus, cnf)
+                lcb = get_kl_lcb(mus, cnf) 
+            else: # use Chernoff-Hoeffding bounds
+                cbs = np.sqrt(cnf)
+                ucb = mus + cbs
+                lcb = mus - cbs
+
+            # Sort the documents within the group by
+            # their lower-confidence bounds.
+            sorter = np.argsort(lcb)[::-1]
+
+            ds[:] = ds[sorter]
+            ucb = ucb[sorter]
+            lcb = lcb[sorter]
+
+            # Try eliminate documents for the group spanning
+            # over the cutoff position.
+            if s + len(ds) > self.cutoff:
+                k = self.cutoff - s - 1
+                i = k + 1
+                j = k + 1
+
+                while j < len(ds):
+                    if ucb[j] < lcb[k]:
+                        reset_counters = True
+                    else:
+                        ds[i] = ds[j]
+                        ucb[i] = ucb[j]
+                        lcb[i] = lcb[j]
+                        i += 1
+                    j += 1
+                    
+                # if i != j:
+                    # print 'Eliminating %d documents...' % (j - i)
+
+                ds = ds[:i]
+                ucb = ucb[:i]
+                lcb = lcb[:i]
+
+                self.D = self.D[:s + i]
+
+            running_max_ucb = -np.ones_like(ucb)
+            running_min_lcb =  np.ones_like(lcb)
+
+            # Find the minimal LCB for consecutive documents
+            # from top to bottom.
+            running_min_lcb[0] = lcb[0]
+            for i in range(1, len(ds)):
+                running_min_lcb[i] = min(running_min_lcb[i - 1], lcb[i])
+            
+            # Find the maximal UCB for consecutive documents
+            # from bottom to top.
+            running_max_ucb[-1] = ucb[-1]
+            for i in range(2, len(ds) + 1):
+                running_max_ucb[-i] = max(running_max_ucb[-(i - 1)], ucb[-i])
+            
+            # See whether documents in the group cannot be
+            # split into smaller groups.
+            for i in range(1, len(ds)):
+                if running_min_lcb[i - 1] > running_max_ucb[i]:
+                    nextS.append(s + i)
+                    nextDeltas.append(0.5)
+                    reset_counters = True
+
+            # Has the group of documents changed (elimination/split)?
+            if reset_counters:
+                # Should we clear the feedback after split?
+                if self.clear:
+                    # print 'Resetting counters...'
+                    self.C[ds] = 0
+                    self.N[ds] = 0
+
+                # nextDeltas.append(delta / 2.0)
+                nextDeltas.append(0.5)
+            else:
+                nextDeltas.append(delta / 2.0)            
+            
+        # Update the splits (omitting the 1st, which is
+        # just an auxiliary index).
+        self.S = np.array(nextS[1:], dtype='int32')
+
+        # Update the deltas
+        self.deltas = nextDeltas
+
+        self.t += 1
+        
+        # if self.t % 100000 == 0:
+        #     print 'Split positions: ', ', '.join(map(str, self.S))
+        #     print 'Bucket deltas:   ', ', '.join(map(lambda x: '%.6f' % x, self.deltas))
+        #     print 'Current buckets: ', ', '.join(map(lambda x: '%r' % list(x), np.array_split(self.D, self.S)))
+
+
 class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):
         super(MergeRankAlgorithm, self).__init__(*args, **kwargs)
@@ -348,6 +547,7 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
             self.t = 0
             self.T = kwargs['n_impressions']
             self.use_kl = (kwargs['method'] == 'kl')
+            self.clear = kwargs['clear']
             self.feedback = kwargs['feedback']
             np.set_printoptions(linewidth=np.inf)
         except KeyError as e:
@@ -359,6 +559,9 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         parser.add_argument('-m', '--method', choices=['ch', 'kl'], required=False,
                             default='ch', help='specify type of confidence bounds used '
                            'by the ranking algorithm')
+        parser.add_argument('-c', '--clear', action='store_true', help='indicates whether '
+                            'the acumulate clicks and views should be cleared after a split '
+                            'is made')
         parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
                             default='lc', required=False, help='specify the way the click feedback '
                             'is processed - fc: down to the first click, lc: down to '
@@ -368,7 +571,8 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
         '''
         Returns the name of the algorithm.
         '''
-        return ('MergeRank' + ('KL' if getattr(self, 'use_kl', False) else '') 
+        return ('MergeRank' + ('Zero' if getattr(self, 'clear', False) else '')
+                            + ('KL' if getattr(self, 'use_kl', False) else '')
                             + ('[' + self.feedback.upper() + ']'))
 
     def get_ranking(self, ranking):
@@ -442,11 +646,20 @@ class MergeRankAlgorithm(BaseRankingBanditAlgorithm):
                 group_max_ucb[-i] = max(group_ucb[-i],
                                         group_max_ucb[-(i - 1)])
             
+            # True only when the documents in the bucket were split
+            was_split = False
+            
             # See whether documents in the group cannot be
             # split into smaller groups.
             for i in range(1, len(ds)):
                 if group_min_lcb[i - 1] > group_max_ucb[i]:
                     nextS.append(s + i)
+                    was_split = True
+
+            # Should we clear the feedback after split?
+            if was_split and self.clear:
+                self.C[ds] = 0
+                self.N[ds] = 0
             
         # Update the splits(omitting the 1st, which is
         # just an auxiliary index).
@@ -795,6 +1008,72 @@ class RankedBanditsUCB1Algorithm(BaseRankingBanditAlgorithm):
         Returns the name of the algorithm.
         '''
         return 'RankedBanditsUCB1' + ('[' + self.feedback.upper() + ']')
+
+    def get_ranking(self, ranking):
+        D = set(range(self.n_documents))
+
+        if self.t < self.T: 
+            for r, ranker in enumerate(self.rankers):
+                self.__tmp_ranking[r] = ranker.get_arm()
+                
+                if self.__tmp_ranking[r] in ranking[:r]:
+                    ranking[r] = self.random_state.choice(list(D))
+                else:
+                    ranking[r] = self.__tmp_ranking[r]
+                
+                D.remove(ranking[r])
+        else:
+            for r, ranker in enumerate(self.rankers):
+                ranking[r] = ranker.get_arm()
+
+    def set_feedback(self, ranking, clicks):
+        if self.t < self.T:
+            cutoff = self.cutoff
+        
+            if self.feedback == 'fc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[0] + 1
+
+            elif self.feedback == 'lc':
+                crs = np.flatnonzero(clicks)
+                if crs.size > 0:
+                    cutoff = crs[-1] + 1
+            
+            for d, dhat, c, ranker in zip(ranking[:cutoff], self.__tmp_ranking[:cutoff],
+                                          clicks, self.rankers[:cutoff]):
+                c = 1 if c and d == dhat else 0                    
+                ranker.update_arm(dhat, c)
+
+
+class RankedBanditsKLUCBAlgorithm(BaseRankingBanditAlgorithm):
+    def __init__(self, *args, **kwargs):
+        super(RankedBanditsKLUCBAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            # Create one MAB for each rank.
+            self.rankers = [KLUCB(self.n_documents, random_state=self.random_state)
+                            for _ in range(self.cutoff)]
+            self.t = 0
+            self.T = kwargs['n_impressions']
+            self.feedback = kwargs['feedback']
+            self.__tmp_ranking = np.empty(self.cutoff, dtype='int32')
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+
+    @classmethod
+    def update_parser(cls, parser):
+        super(RankedBanditsKLUCBAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='ff', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return 'RankedBanditsKL-UCB' + ('[' + self.feedback.upper() + ']')
 
     def get_ranking(self, ranking):
         D = set(range(self.n_documents))

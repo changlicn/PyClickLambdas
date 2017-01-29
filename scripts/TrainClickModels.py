@@ -60,19 +60,19 @@ if __name__ == "__main__":
             search_sessions = pickle.load(fin)
 
         # Because we are interested mostly in getting parameter estimates
-        # for theses session queries, they are also used as 'hold-out set'.
+        # for `search_sessions` queries, they are also used as 'hold-out set'.
         holdout_search_sessions = list(search_sessions)
 
         n_search_sessions = 1000000
 
         # Reads `n_search_session` number of sessions from the Yandex dataset ...
-        holdout_search_sessions = Utils.filter_sessions(YandexRelPredChallengeParser().parse(search_sessions_path, sessions_max=n_search_sessions),
-                                                        Utils.get_unique_queries(search_sessions),
-                                                        operation='remove')
+        additional_search_sessions = Utils.filter_sessions(YandexRelPredChallengeParser().parse(search_sessions_path, sessions_max=n_search_sessions),
+                                                           Utils.get_unique_queries(search_sessions),
+                                                           operation='remove')
 
         # ... and merges them with `search_sessions` while taking care of not
-        # including any of these sessions twice.
-        search_sessions.extend(holdout_search_sessions)
+        # including any session twice.
+        search_sessions.extend(additional_search_sessions)
 
     queries = Utils.get_unique_queries(search_sessions)
 

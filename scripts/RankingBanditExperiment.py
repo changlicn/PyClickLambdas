@@ -143,7 +143,7 @@ def parse_command_line_arguments(MQD):
     parser.add_argument('-v', '--verbose', type=int, default=0, help='verbosity level')
     parser.add_argument('-r', '--regret', action='store_true', help='indicates that the regret of the algorithm should be calculated as well')
     parser.add_argument('-d', '--store_rankings', action='store_true', help='indicates that the sequence of rankings made by the algorithm should be stored (they are if `regret` option is not specified)')
-    parser.add_argument('-q', '--query', choices=['all'] + MQD[MQD.keys()[0]].keys(), default='all', help='query for which the experiment is executed')
+    parser.add_argument('-q', '--query', choices=['all'] + MQD[MQD.keys()[0]].keys(), default='all', nargs='+', help='query for which the experiment is executed')
     parser.add_argument('-m', '--click-model', choices=['all'] + MQD.keys(), default='all', help='user model used for generating clicks')
     parser.add_argument('-n', '--n-impressions', type=int, default=1, help='number of impressions')
     parser.add_argument('-c', '--cutoff', type=int, default=10, help='impressions will consist of only this number of documents')
@@ -195,7 +195,8 @@ def parallel_helper(obj, methodname, *args, **kwargs):
 
 if __name__ == '__main__':
     # Load click models trained for selected queries.
-    MQD = load_click_models('./data/model_query_collection.pkl')
+    # MQD = load_click_models('./data/10Q/model_query_collection.pkl')
+    MQD = load_click_models('./data/60Q/model_query_collection.pkl')
     # MQD = load_click_models('./data/model_query_collection_custom.pkl')
 
     kwargs = parse_command_line_arguments(MQD)
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     queries = kwargs.pop('query')
     if queries == 'all':
         queries = MQD[MQD.keys()[0]].keys()
-    else:
+    elif not isinstance(queries, list):
         queries = [queries]
 
     # the regret computation indicator
