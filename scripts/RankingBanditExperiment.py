@@ -76,7 +76,7 @@ class RankingBanditExperiment(object):
             # with documents for which we have got feedback.
             _ranking = ranking[:self.cutoff]
 
-            # if t % 10000 == 0:
+            # if t % 1000 == 0:
             #     print t, _ranking
 
             # get user clicks on that ranking...
@@ -131,7 +131,7 @@ def load_click_models(source):
         return pickle.load(ifile)
 
 
-def parse_command_line_arguments(MQD):
+def parse_command_line_arguments():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=__doc__)
 
     subparsers = parser.add_subparsers(help='choose ranking algorithm', dest='ranking_model')
@@ -141,10 +141,11 @@ def parse_command_line_arguments(MQD):
         getattr(RankingBanditAlgorithm, ranker_algorithm_name).update_parser(ranker_parser)
 
     parser.add_argument('-v', '--verbose', type=int, default=0, help='verbosity level')
+    parser.add_argument('-i', '--input', required=True, help='path to (query, click models)-pair pickle file')
     parser.add_argument('-r', '--regret', action='store_true', help='indicates that the regret of the algorithm should be calculated as well')
     parser.add_argument('-d', '--store_rankings', action='store_true', help='indicates that the sequence of rankings made by the algorithm should be stored (they are if `regret` option is not specified)')
-    parser.add_argument('-q', '--query', choices=['all'] + MQD[MQD.keys()[0]].keys(), default='all', nargs='+', help='query for which the experiment is executed')
-    parser.add_argument('-m', '--click-model', choices=['all'] + MQD.keys(), default='all', help='user model used for generating clicks')
+    parser.add_argument('-q', '--query', default='all', nargs='+', help='query/ies for which the experiment is executed')
+    parser.add_argument('-m', '--click-model', default='all', nargs='+', help='user model/s used for generating clicks')
     parser.add_argument('-n', '--n-impressions', type=int, default=1, help='number of impressions')
     parser.add_argument('-c', '--cutoff', type=int, default=10, help='impressions will consist of only this number of documents')
     parser.add_argument('-w', '--n-workers', type=int, default=1, help='number of worker threads')
@@ -194,12 +195,10 @@ def parallel_helper(obj, methodname, *args, **kwargs):
 
 
 if __name__ == '__main__':
-    # Load click models trained for selected queries.
-    # MQD = load_click_models('./data/10Q/model_query_collection.pkl')
-    MQD = load_click_models('./data/60Q/model_query_collection.pkl')
-    # MQD = load_click_models('./data/model_query_collection_custom.pkl')
+    kwargs = parse_command_line_arguments()
 
-    kwargs = parse_command_line_arguments(MQD)
+    # Load click models trained for selected queries.    
+    MQD = load_click_models(kwargs.pop('input'))
 
     # ===============================================================
     # Get the global (not algorithm specific) command line arguments,
@@ -210,17 +209,21 @@ if __name__ == '__main__':
 
     # click model name(s) ...
     click_model_names = kwargs.pop('click_model')
-    if click_model_names == 'all':
+    if 'all' in click_model_names:
         click_model_names = MQD.keys()
     else:
-        click_model_names = [click_model_names]
+        diff = np.setdiff1d(click_model_names, MQD.keys())
+        if len(diff) > 0:
+            raise ValueError('some click models are not available: %s' % diff)
 
     # query ID(s) ...
     queries = kwargs.pop('query')
-    if queries == 'all':
+    if 'all' in queries:
         queries = MQD[MQD.keys()[0]].keys()
-    elif not isinstance(queries, list):
-        queries = [queries]
+    else:
+        diff = np.setdiff1d(queries, MQD[MQD.keys()[0]].keys())
+        if len(diff) > 0:
+            raise ValueError('some queries are not available: %s' % diff)
 
     # the regret computation indicator
     compute_regret = kwargs.pop('regret')

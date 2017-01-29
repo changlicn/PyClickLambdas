@@ -338,6 +338,102 @@ class CascadeExp3Algorithm(BaseRankingBanditAlgorithm):
         self.ranker.set_feedback(ranking, clicks)
 
 
+class PIEAlgorithm(BaseRankingBanditAlgorithm):
+
+    def __init__(self, *args, **kwargs):
+        super(PIEAlgorithm, self).__init__(*args, **kwargs)
+        try:
+            self.D = np.arange(self.n_documents, dtype='int32')
+            self.B = []
+            self.C = np.zeros(self.n_documents, dtype='float64')
+            self.N = np.zeros(self.n_documents, dtype='float64')
+            self.t = 0
+            self.l = kwargs['position']
+            self.feedback = kwargs['feedback']
+
+            # Make sure we start with random ranking.
+            self.random_state.shuffle(self.D)
+
+        except KeyError as e:
+            raise ValueError('missing %s argument' % e)
+    
+    @classmethod
+    def update_parser(cls, parser):
+        super(PIEAlgorithm, cls).update_parser(parser)
+        parser.add_argument('-l', '--position', type=int, default=0, required=False,
+                            help='zero-based position used for exploration')
+        parser.add_argument('-f', '--feedback', type=str, choices=['fc', 'lc', 'ff'],
+                            default='fc', required=False, help='specify the way the click feedback '
+                            'is processed - fc: down to the first click, lc: down to '
+                            ' the last click, ff: full feedback')
+
+    def getName(self):
+        '''
+        Returns the name of the algorithm.
+        '''
+        return ('PIE(%d)' % (self.l + 1)) + ('[' + self.feedback.upper() + ']')
+
+    def get_ranking(self, ranking):
+        # With probability 1/2 we return the currently
+        # thought "best" ranking...
+        ranking[:self.cutoff] = self.D[:self.cutoff]
+
+        # else we explore a bit by ...
+        if len(self.B) > 0 and self.random_state.rand() < 0.5:
+            # ... sampling a random document from B and 
+            # placing it on the 'l'-th position .
+            ranking[self.l] = self.random_state.choice(self.B)
+
+    def set_feedback(self, ranking, clicks):
+        # Sets cutoff for full feedback.
+        cutoff = self.cutoff
+        
+        # Sets cutoff for first click feedback.
+        if self.feedback == 'fc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[0] + 1
+
+        # Sets cutoff for last click feedback.
+        elif self.feedback == 'lc':
+            crs = np.flatnonzero(clicks)
+            if crs.size > 0:
+                cutoff = crs[-1] + 1
+        
+        # Update the click and view counters for the most
+        # recent impression.
+        for d, c in zip(ranking[:cutoff], clicks[:cutoff]):
+            self.C[d] += c
+            self.N[d] += 1
+
+        with np.errstate(invalid='ignore', divide='ignore'):
+            # Compute average click-through rates.
+            mus = np.nan_to_num(self.C / self.N)
+   
+            # Compute KL upper confidence bounds.
+            ucb = get_kl_ucb(mus, np.nan_to_num((np.log(self.t) + 4 * np.log(np.log(self.t))) / self.N))
+
+            # We need to get rid of invalid values for t <= 2
+            # (results in "negative confidence" value).
+            if self.t <= 2:
+                ucb[np.isnan(ucb)] = 1.0
+
+        # Get currently "best" ranking based on average click-through rates.
+        self.D = np.argsort(mus)[::-1]
+
+        # Find set of documents that are potentially better
+        # than the current CTR estimate of document placed
+        # on the `cut-off` position, ignoring top `cut-off`
+        # documents.
+        self.B = list(set(np.flatnonzero(ucb >= mus[self.D[self.cutoff - 1]])) - set(self.D[:self.cutoff]))
+
+        # If B is empty, return the currently
+        # tought "best" ranking.        
+        if len(self.B) == 0:
+            return 
+
+        self.t += 1
+
 
 class RealMergeRankAlgorithm(BaseRankingBanditAlgorithm):
     def __init__(self, *args, **kwargs):

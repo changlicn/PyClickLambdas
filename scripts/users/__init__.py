@@ -25,6 +25,7 @@ from .users_inner import DynamicBayesianNetworkModel
 from .users_inner import ClickChainUserModel
 from .users_inner import PositionBasedModel
 from .users_inner import UserBrowsingModel
+from .combined import ClickModelCombinator
 
 __all__ = [
     'CascadeModel',
@@ -33,4 +34,5 @@ __all__ = [
     'ClickChainUserModel',
     'PositionBasedModel',
     'UserBrowsingModel',
+    'ClickModelCombinator',
 ]
