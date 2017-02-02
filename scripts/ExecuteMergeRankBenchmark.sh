@@ -189,8 +189,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/PIEAlgorithm/run${i}
-#       python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q 104183 11527 128292 46254 218954 89951 -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i data/PBM+CM_model_query_collection.pkl -q 104183 11527 128292 46254 218954 89951 -m all -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
+      python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q 104183 11527 128292 46254 218954 89951 -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "===================================="
@@ -198,3 +197,7 @@ then
 fi
 
 echo "Experiments finished: `date`"
+
+
+# Code for running 
+# python2.7 ./RankingBanditExperiment.py -i data/PBM+CM_model_query_collection.pkl -q 104183 11527 128292 46254 218954 89951 -m all -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
