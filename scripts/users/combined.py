@@ -44,7 +44,11 @@ class ClickModelCombinator(object):
         # XXX: What to return here when the ideal rankings of individual
         #      click models do not match? --- Currently, the ranking of
         #      the 1st model is returned.
-        return self.models[0].get_ideal_ranking(cutoff=cutoff, satisfied=satisfied)
+        ideal_ranking = self.models[0].get_ideal_ranking(cutoff=cutoff, satisfied=satisfied)
+        for m in self.models[1:]:
+            if (ideal_ranking != m.get_ideal_ranking(cutoff=cutoff, satisfied=satisfied)).any():
+                raise ValueError('ideal rankings of the combined models do not match')
+        return ideal_ranking
 
     def get_clicks(self, ranked_documents, labels, cutoff=2**31-1):
         return self.random_state.choice(self.models, p=self.ps).get_clicks(ranked_documents, labels, cutoff=cutoff)
@@ -55,3 +59,6 @@ class ClickModelCombinator(object):
                 raise ValueError('seed must be an integer')
             self.random_state = np.random.RandomState(value)
         super(ClickModelCombinator, self).__setattr__(name, value)
+
+    def get_clickthrough_rate(self, ranked_documents, labels, cutoff=2**31-1, relative=False):
+        return np.sum([p * m.get_clickthrough_rate(ranked_documents, labels, cutoff, relative) for p, m in zip(self.ps, self.models)])

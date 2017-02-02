@@ -242,7 +242,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/PIEAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q 1153 -m PBM -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q all -m all -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "===================================="
