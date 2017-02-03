@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeKL-UCB-lc' 'RankedBanditsExp3' 'RankedBanditsKL-UCB' 'RealMergeRankKL' 'PIEAlgorithm')
-# ALGORITHMS=('PIEAlgorithm')
+ALGORITHMS=('CascadeKL-UCB-lc' 'RankedBanditsExp3' 'RealMergeRankKL')
+# ALGORITHMS=('PIEAlgorithm' 'RankedBanditsKL-UCB')
 
 # Specify the input file with query/click models.
 INPUT='data/60Q/model_query_collection.pkl'
@@ -11,8 +11,7 @@ INPUT='data/60Q/model_query_collection.pkl'
 OUTPUTDIR='experiments/mergerank_benchmark'
 
 # The upper time (number of impressions) limit.
-NIMPRESSIONS=10000
-#10000000
+NIMPRESSIONS=10000000
 
 # The number of individual ranking experiment repetitions.
 NRUNS=10
