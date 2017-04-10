@@ -1,35 +1,35 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeKL-UCB-lc' 'RankedBanditsExp3' 'RealMergeRankKL')
-# ALGORITHMS=('PIEAlgorithm' 'RankedBanditsKL-UCB')
+ALGORITHMS=('CascadeKL-UCB-lc' 'RealMergeRankKL')
 
 # Specify the input file with query/click models.
 INPUT='data/60Q/model_query_collection.pkl'
 
 # Specify the output directory (WITHOUT TRAILING BACKSLASH) for the experiments.
-OUTPUTDIR='experiments/mergerank_benchmark'
+OUTPUTDIR='experiments/mergerank_benchmark_ecc'
 
 # The upper time (number of impressions) limit.
 NIMPRESSIONS=10000000
 
 # The number of individual ranking experiment repetitions.
 NRUNS=10
-#10
 
 # The number of CPUs running the experiments in parallel
 # NOTE: Works only for experiment with a single ranking algorithm!!!.
-NCPUS=30
+NCPUS=8
 
 # The cut-off position.
 CUTOFF=5
 
+# The type of regret to use: ctr (click-through rate), ecc (expected click count)
+REGRET='ecc'
+
 # Click model
-CM="PBM CM"
+CM='PBM'
 
 # Queries
-QUERIES="all"
-#"104183 11527 128292 46254 218954 89951"
+QUERIES='104183 11527 128292 46254 218954 89951'
 
 
 function shouldRun() { local i; for i in ${ALGORITHMS[@]}; do [[ "$i" == "$1" ]] && return 0; done; return 1; }
@@ -49,7 +49,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} CascadeKLUCBAlgorithm -f 'ff' ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} CascadeKLUCBAlgorithm -f 'ff' ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -67,7 +67,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} CascadeKLUCBAlgorithm -f 'lc' ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} CascadeKLUCBAlgorithm -f 'lc' ${OUTPUTDIR}/CascadeKLUCBAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -85,7 +85,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} RankedBanditsUCB1Algorithm -a 0.51 -f 'ff' ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} RankedBanditsUCB1Algorithm -a 0.51 -f 'ff' ${OUTPUTDIR}/RankedBanditsUCB1Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================="
@@ -103,7 +103,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RankedBanditsKLUCBAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} RankedBanditsKLUCBAlgorithm -f 'ff' ${OUTPUTDIR}/RankedBanditsKLUCBAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} RankedBanditsKLUCBAlgorithm -f 'ff' ${OUTPUTDIR}/RankedBanditsKLUCBAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================="
@@ -121,7 +121,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} RankedBanditsExp3Algorithm -f 'ff' ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} RankedBanditsExp3Algorithm -f 'ff' ${OUTPUTDIR}/RankedBanditsExp3Algorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================="
@@ -139,7 +139,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/RealMergeRankKLAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} RealMergeRankAlgorithm -m 'kl' -c -f 'ff' ${OUTPUTDIR}/RealMergeRankKLAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} RealMergeRankAlgorithm -m 'kl' -c -f 'ff' ${OUTPUTDIR}/RealMergeRankKLAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -157,7 +157,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/MergeRankKLAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} MergeRankAlgorithm -m 'kl' -f 'ff' ${OUTPUTDIR}/MergeRankKLAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} MergeRankAlgorithm -m 'kl' -f 'ff' ${OUTPUTDIR}/MergeRankKLAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -175,7 +175,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/MergeRankZeroKLAlgorithm/run${i}
-        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} MergeRankAlgorithm -m 'kl' -c -f 'ff' ${OUTPUTDIR}/MergeRankZeroKLAlgorithm/run${i}
+        python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} MergeRankAlgorithm -m 'kl' -c -f 'ff' ${OUTPUTDIR}/MergeRankZeroKLAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "========================================"
@@ -193,7 +193,7 @@ then
     do
         echo "Run #${i} started: `date`"
         mkdir -p ${OUTPUTDIR}/PIEAlgorithm/run${i}
-      python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
+      python2.7 ./RankingBanditExperiment.py -i ${INPUT} -q ${QUERIES} -m ${CM} -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
     done
     echo "Done: `date`"
     echo "===================================="
@@ -204,4 +204,4 @@ echo "Experiments finished: `date`"
 
 
 # Code for running 
-# python2.7 ./RankingBanditExperiment.py -i data/PBM+CM_model_query_collection.pkl -q 104183 11527 128292 46254 218954 89951 -m all -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
+# python2.7 ./RankingBanditExperiment.py -i data/PBM+CM_model_query_collection.pkl -q 104183 11527 128292 46254 218954 89951 -m all -n ${NIMPRESSIONS} -w ${NCPUS} -c ${CUTOFF} -r ${REGRET} -s ${i} PIEAlgorithm -l 0 -f 'fc' ${OUTPUTDIR}/PIEAlgorithm/run${i}
