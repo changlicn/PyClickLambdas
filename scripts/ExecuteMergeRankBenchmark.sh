@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List the algorithms for which you want to run the experiments.
-ALGORITHMS=('CascadeKL-UCB-lc' 'RealMergeRankKL')
+ALGORITHMS=('CascadeKL-UCB-lc' 'RealMergeRankKL' 'RankedBanditsExp3')
 
 # Specify the input file with query/click models.
 INPUT='data/60Q/model_query_collection.pkl'
@@ -17,7 +17,7 @@ NRUNS=10
 
 # The number of CPUs running the experiments in parallel
 # NOTE: Works only for experiment with a single ranking algorithm!!!.
-NCPUS=8
+NCPUS=30
 
 # The cut-off position.
 CUTOFF=5
@@ -29,7 +29,8 @@ REGRET='ecc'
 CM='PBM'
 
 # Queries
-QUERIES='104183 11527 128292 46254 218954 89951'
+#QUERIES='104183 11527 128292 46254 218954 89951'
+QUERIES='all'
 
 
 function shouldRun() { local i; for i in ${ALGORITHMS[@]}; do [[ "$i" == "$1" ]] && return 0; done; return 1; }
