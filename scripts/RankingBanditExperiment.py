@@ -15,6 +15,7 @@ import cPickle as pickle
 import RankingBanditAlgorithm
 
 from RankingRegretEvaluation import ClickthroughRateRegretEvaluator
+from RankingRegretEvaluation import ExpectedClickCountRegretEvaluator
 
 from joblib import Parallel, delayed
 
@@ -104,19 +105,25 @@ class RankingBanditExperiment(object):
         info['n_documents'] = self.n_documents
         info['n_impressions'] = self.n_impressions
         info['seed'] = self.seed
+        info['regret_type'] = self.compute_regret 
 
         # Save the specifications of the experiment...
         with open(self.get_output_filepath(suffix='experiment') + '.nfo', 'wb') as ofile:
             pickle.dump(info, ofile, protocol=-1)
 
         # ... the rankings (based on specified options) ...
-        if self.store_rankings or not self.compute_regret:
+        if self.store_rankings or self.compute_regret is None:
             np.save(self.get_output_filepath(suffix='rankings'), rankings[:, :self.cutoff])
 
         # ... and (optionally) the cumulative regret.
-        if self.compute_regret:
+        if self.compute_regret is not None:
             # Create an instance of simple CTR regret evaluator.
-            evaluator = ClickthroughRateRegretEvaluator(self.click_model)
+            if self.compute_regret == 'ctr':
+                evaluator = ClickthroughRateRegretEvaluator(self.click_model)
+            elif self.compute_regret == 'ecc':
+                evaluator = ExpectedClickCountRegretEvaluator(self.click_model)
+            else:
+                raise ValueError('unknown regret type: %s' % self.compute_regret)
 
             regret = evaluator.evaluate(info, rankings[:, :self.cutoff])
 
@@ -142,7 +149,7 @@ def parse_command_line_arguments():
 
     parser.add_argument('-v', '--verbose', type=int, default=0, help='verbosity level')
     parser.add_argument('-i', '--input', required=True, help='path to (query, click models)-pair pickle file')
-    parser.add_argument('-r', '--regret', action='store_true', help='indicates that the regret of the algorithm should be calculated as well')
+    parser.add_argument('-r', '--regret', choices=('ctr', 'ecc'), help='the type of regret that is calculated: ctr (clickthrough rate), ecc (expected click count), regret is not calculated, if not specified')
     parser.add_argument('-d', '--store_rankings', action='store_true', help='indicates that the sequence of rankings made by the algorithm should be stored (they are if `regret` option is not specified)')
     parser.add_argument('-q', '--query', default='all', nargs='+', help='query/ies for which the experiment is executed')
     parser.add_argument('-m', '--click-model', default='all', nargs='+', help='user model/s used for generating clicks')

@@ -68,6 +68,34 @@ class ClickthroughRateRegretEvaluator(BaseRegretEvaluator):
         return regret
 
 
+class ExpectedClickCountRegretEvaluator(BaseRegretEvaluator):
+    def __init__(self, click_model):
+        self.click_model = click_model
+
+    def evaluate(self, info, rankings):
+        regret = np.empty(rankings.shape[0], dtype='float64')
+
+        cutoff = info['cutoff']
+
+        # Used internally by the click model.
+        identity = np.arange(info['n_documents'], dtype='int32')
+
+        # Get the ideal top-`cutoff` ranking for the click model ...
+        ideal_ranking = self.click_model.get_ideal_ranking(cutoff=cutoff)
+
+        # ... and compute its expected click count.
+        ideal_ecc = self.click_model.get_expected_click_count(ideal_ranking,
+                                                              identity,
+                                                              cutoff=cutoff)
+
+        for t, ranking in enumerate(rankings):
+            curr_ecc = self.click_model.get_expected_click_count(ranking, identity,
+                                                                 cutoff=cutoff)
+            regret[t] = ideal_ecc - curr_ecc
+
+        return regret
+
+
 def load_model_rankings(ifilepath):
     with open(ifilepath) as ifile:
         info = pickle.load(ifile)
