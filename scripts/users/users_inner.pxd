@@ -19,6 +19,9 @@ cdef class AbstractUserModel:
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil
 
@@ -48,6 +51,9 @@ cdef class DependentClickModel(AbstractUserModel):
 
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil
@@ -79,6 +85,9 @@ cdef class DynamicBayesianNetworkModel(AbstractUserModel):
 
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil
@@ -113,6 +122,9 @@ cdef class ClickChainUserModel(AbstractUserModel):
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil
 
@@ -143,6 +155,9 @@ cdef class PositionBasedModel(AbstractUserModel):
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil
 
@@ -172,6 +187,9 @@ cdef class UserBrowsingModel(AbstractUserModel):
 
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
     cdef DOUBLE_t get_clickthrough_rate_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
+
+    cpdef get_expected_click_count(self, object ranked_documents, object labels, int cutoff=?, bint relative=?)
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels, bint relative=?) nogil
 
     cpdef get_expected_reciprocal_rank(self, object ranked_documents, object labels, int cutoff=?)
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self, INT32_t *ranked_documents, INT32_t n_documents, INT32_t *labels) nogil

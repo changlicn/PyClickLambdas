@@ -115,7 +115,7 @@ cdef class AbstractUserModel:
     cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
                                 int cutoff=2**31-1, bint relative=False):
         '''
-        Simulate clicks on the specified ranked list of documents.
+        Computes the click through rate for the given ranking.
         '''
         cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
         cdef np.ndarray ranked_documents_, labels_
@@ -141,6 +141,39 @@ cdef class AbstractUserModel:
                                           bint relative=False) nogil:
         '''
         Guts of self.get_clickthrough_rate! Need to be reimplemented
+        in the extended class.
+        '''
+        pass
+
+    cpdef get_expected_click_count(self, object ranked_documents, object labels,
+                                   int cutoff=2**31-1, bint relative=False):
+        '''
+        Computes the expected number of clicks for the given ranking.
+        '''
+        cdef INT32_t n_documents = min(len(ranked_documents), cutoff)
+        cdef np.ndarray ranked_documents_, labels_
+        cdef DOUBLE_t result
+
+        if getattr(ranked_documents, "dtype", None) != INT32 or not ranked_documents.flags.contiguous:
+            ranked_documents_ = np.ascontiguousarray(ranked_documents, dtype=INT32)
+        else:
+            ranked_documents_ = ranked_documents
+
+        if getattr(labels, "dtype", None) != INT32 or not labels.flags.contiguous:
+            labels_ = np.ascontiguousarray(labels, dtype=INT32)
+        else:
+            labels_ = labels
+
+        with nogil:
+            result = self.get_expected_click_count_c(<INT32_t*>ranked_documents_.data, n_documents, <INT32_t*>labels_.data, relative)
+
+        return result
+        
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
         in the extended class.
         '''
         pass
@@ -261,13 +294,6 @@ cdef class DependentClickModel(AbstractUserModel):
         # Return the number of clicks.
         return count
 
-    cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
-                                int cutoff=2**31-1, bint relative=False):
-        return AbstractUserModel.get_clickthrough_rate(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff),
-                                            relative=relative)
-
     cdef DOUBLE_t get_clickthrough_rate_c(self,
                                           INT32_t *ranked_documents,
                                           INT32_t n_documents,
@@ -285,12 +311,20 @@ cdef class DependentClickModel(AbstractUserModel):
         for rank in range(n_documents):
             result *= (1.0 - self.click_proba_ptr[labels[ranked_documents[rank]]])
         return 1.0 - result
+    
+    cpdef get_expected_click_count(self, object ranked_documents, object labels,
+                                   int cutoff=2**31-1, bint relative=False):
+        raise NotImplementedError()
 
-    cpdef get_expected_reciprocal_rank(self, object ranked_documents,
-                                       object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_expected_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
+        in the extended class.
+        '''
+        # TODO: Implement this!!!
+        return -1.0
 
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
@@ -302,12 +336,6 @@ cdef class DependentClickModel(AbstractUserModel):
         '''
         # TODO: Implement this!!!
         return -1.0
-
-    cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
-                                           object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_last_clicked_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
 
     cdef DOUBLE_t get_last_clicked_reciprocal_rank_c(self,
                                                      INT32_t *ranked_documents,
@@ -351,8 +379,10 @@ cdef class DynamicBayesianNetworkModel(AbstractUserModel):
         self.stop_proba = np.array(stop_proba, copy=True, dtype=DOUBLE, order='C')
         self.stop_proba_ptr = <DOUBLE_t*> self.stop_proba.data
         self.abandon_proba = abandon_proba
-        self.continue_proba = (1. - self.click_proba * self.stop_proba -
-                               (1 - self.click_proba) * self.abandon_proba)
+        # continue_proba[i] is probability of examination
+        # of a document following the i-th document.
+        self.continue_proba = ((1.0 - self.abandon_proba) *
+                               (1.0 - self.click_proba * self.stop_proba))
         self.continue_proba_ptr =  <DOUBLE_t*> self.continue_proba.data
 
         if (self.click_proba < 0.0).any() or (self.click_proba > 1.0).any():
@@ -489,6 +519,23 @@ cdef class DynamicBayesianNetworkModel(AbstractUserModel):
                 result = (1.0 - self.click_proba_ptr[labels[ranked_documents[rank]]]) * (self.abandon_proba + (1.0 - self.abandon_proba) * result)
             return 1.0 - result
 
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
+        in the extended class.
+        '''
+        cdef int rank, label
+        cdef double result = 0.0, gamma = 1.0
+
+        for rank in range(n_documents):
+            label = labels[ranked_documents[rank]]
+            result += gamma * self.click_proba_ptr[label]
+            gamma *= self.continue_proba_ptr[label]
+
+        return result
+
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
                                                  INT32_t n_documents,
@@ -609,13 +656,6 @@ cdef class PositionBasedModel(AbstractUserModel):
         # Return the number of clicks.
         return count
 
-    cpdef get_clickthrough_rate(self, object ranked_documents, object labels,
-                                int cutoff=2**31-1, bint relative=False):
-        return AbstractUserModel.get_clickthrough_rate(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff),
-                                            relative=relative)
-
     cdef DOUBLE_t get_clickthrough_rate_c(self,
                                           INT32_t *ranked_documents,
                                           INT32_t n_documents,
@@ -636,11 +676,22 @@ cdef class PositionBasedModel(AbstractUserModel):
                        self.exam_proba_ptr[rank])
         return 1.0 - result
 
-    cpdef get_expected_reciprocal_rank(self, object ranked_documents,
-                                       object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_expected_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
+        in the extended class.
+        '''
+        cdef int rank
+        # The final answer will be here.
+        cdef double result
+
+        result = 0.0
+        for rank in range(n_documents):
+            result += (self.click_proba_ptr[labels[ranked_documents[rank]]] *
+                       self.exam_proba_ptr[rank])
+        return result
 
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
@@ -652,12 +703,6 @@ cdef class PositionBasedModel(AbstractUserModel):
         '''
         # TODO: Implement this!!!
         return -1.0
-
-    cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
-                                           object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_last_clicked_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
 
     cdef DOUBLE_t get_last_clicked_reciprocal_rank_c(self,
                                                      INT32_t *ranked_documents,
@@ -762,6 +807,20 @@ cdef class ClickChainUserModel(AbstractUserModel):
         for rank in range(n_documents - 1, -1, -1):
             result = (1.0 - self.p_attraction_ptr[labels[ranked_documents[rank]]]) * (self.p_stop_noclick + (1.0 - self.p_stop_noclick) * result)
         return 1.0 - result
+
+    cpdef get_expected_click_count(self, object ranked_documents, object labels,
+                                   int cutoff=2**31-1, bint relative=False):
+        raise NotImplementedError()
+
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
+        in the extended class.
+        '''
+        # TODO: Implement this!!!
+        return -1.0
 
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
@@ -887,11 +946,19 @@ cdef class UserBrowsingModel(AbstractUserModel):
 
         return 1.0 - result
 
-    cpdef get_expected_reciprocal_rank(self, object ranked_documents,
-                                       object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_expected_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
+    cpdef get_expected_click_count(self, object ranked_documents, object labels,
+                                   int cutoff=2**31-1, bint relative=False):
+        raise NotImplementedError()
+
+    cdef DOUBLE_t get_expected_click_count_c(self, INT32_t *ranked_documents,
+                                             INT32_t n_documents, INT32_t *labels,
+                                             bint relative=False) nogil:
+        '''
+        Guts of self.get_expected_click_count. Need to be reimplemented
+        in the extended class.
+        '''
+        # TODO: Implement this!!!
+        return -1.0
 
     cdef DOUBLE_t get_expected_reciprocal_rank_c(self,
                                                  INT32_t *ranked_documents,
@@ -903,12 +970,6 @@ cdef class UserBrowsingModel(AbstractUserModel):
         '''
         # TODO: Implement this!!!
         return -1.0
-
-    cpdef get_last_clicked_reciprocal_rank(self, object ranked_documents,
-                                           object labels, int cutoff=2**31-1):
-        return AbstractUserModel.get_last_clicked_reciprocal_rank(
-                                            self, ranked_documents, labels,
-                                            min(self.max_n_documents, cutoff))
 
     cdef DOUBLE_t get_last_clicked_reciprocal_rank_c(self,
                                                      INT32_t *ranked_documents,
